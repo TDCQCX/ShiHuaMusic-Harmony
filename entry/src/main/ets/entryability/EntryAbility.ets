@@ -1,20 +1,15 @@
-import { AbilityConstant, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
+import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
+import { RouteConfig } from '../types/common';
 
 const DOMAIN = 0x0000;
 
-// 页面路由配置
-interface RouteConfig {
-  name: string;
-  page: string;
-}
-
 const routes: RouteConfig[] = [
-  { name: 'Index', page: 'pages/Index/IndexPage' },
-  { name: 'User', page: 'pages/User/UserPage' },
-  { name: 'Library', page: 'pages/Library/LibraryPage' }
-];
+       { name: 'Index', page: 'pages/Index/IndexPage' },
+       { name: 'User', page: 'pages/User/UserPage' },
+       { name: 'Library', page: 'pages/Library/LibraryPage' }
+     ];
 
 export default class EntryAbility extends UIAbility {
   private currentRoute: string = 'Index';

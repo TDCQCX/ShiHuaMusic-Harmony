@@ -110,3 +110,101 @@ export enum PlayMode {
   SINGLE = 2,
   RANDOM = 3
 }
+
+// 路由配置接口
+export interface RouteConfig {
+  name: string;
+  page: string;
+}
+
+// 位置接口
+export interface Position {
+  x: string | number;
+  y: string | number;
+}
+
+// 边框配置接口
+export interface BorderConfig {
+  top?: number;
+  bottom?: number;
+  left?: number;
+  right?: number;
+}
+
+// 文本溢出配置接口
+export interface TextOverflowConfig {
+  overflow: TextOverflow;
+}
+
+// 分隔线配置接口
+export interface DividerConfig {
+  strokeWidth: number;
+  color: string | Resource;
+}
+
+// 弹性布局配置接口
+export interface FlexConfig {
+  space: string | number;
+}
+
+// 文本输入配置接口
+export interface TextInputConfig {
+  placeholder: string;
+}
+
+// Swiper指示器配置接口
+export interface IndicatorConfig {
+  color: string | Resource;
+}
+
+// 搜索推荐项接口
+export interface SearchSuggestion {
+  first: string;
+  second: string;
+}
+
+// 弹性项目配置接口
+export interface FlexItemConfig {
+  space: string | number;
+}
+
+// 边距配置接口
+export interface MarginConfig {
+  left?: string | number;
+  right?: string | number;
+  top?: string | number;
+  bottom?: string | number;
+}
+
+// 内边距配置接口
+export interface PaddingConfig {
+  left?: string | number;
+  right?: string | number;
+  top?: string | number;
+  bottom?: string | number;
+}
+
+// 统一边距内边距接口
+export interface SpacingConfig extends MarginConfig, PaddingConfig {}
+
+// 请求统计数据接口
+export interface RequestStats {
+  success: number;
+  failed: number;
+  total: number;
+}
+
+// 登录响应接口
+export interface LoginResponse {
+  token: string;
+  userInfo: UserInfo;
+}
+
+// 注册数据接口
+export interface RegisterData {
+  phone?: string;
+  email?: string;
+  password: string;
+  nickname: string;
+  captcha?: string;
+}

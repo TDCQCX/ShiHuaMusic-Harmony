@@ -152,17 +152,17 @@ export class ThemeUtil {
     try {
       // 从本地存储读取主题设置
       const savedTheme = await PreferencesUtil.getString('theme_type', ThemeType.AUTO);
-      this.currentTheme = savedTheme as ThemeType;
+      ThemeUtil.currentTheme = savedTheme as ThemeType;
       
       // 根据系统设置调整主题
-      if (this.currentTheme === ThemeType.AUTO) {
-        await this.updateAutoTheme();
+      if (ThemeUtil.currentTheme === ThemeType.AUTO) {
+        await ThemeUtil.updateAutoTheme();
       }
       
-      console.log('主题系统初始化完成，当前主题:', this.currentTheme);
+      console.log('主题系统初始化完成，当前主题:', ThemeUtil.currentTheme);
     } catch (error) {
       console.error('主题系统初始化失败:', error);
-      this.currentTheme = ThemeType.LIGHT;
+      ThemeUtil.currentTheme = ThemeType.LIGHT;
     }
   }
 
@@ -172,16 +172,16 @@ export class ThemeUtil {
    */
   static async setTheme(theme: ThemeType): Promise<void> {
     try {
-      this.currentTheme = theme;
+      ThemeUtil.currentTheme = theme;
       await PreferencesUtil.putString('theme_type', theme);
       
       // 如果设置为自动主题，需要根据系统设置更新
       if (theme === ThemeType.AUTO) {
-        await this.updateAutoTheme();
+        await ThemeUtil.updateAutoTheme();
       }
       
       // 通知所有监听器
-      this.notifyListeners();
+      ThemeUtil.notifyListeners();
       
       console.log('主题已切换为:', theme);
     } catch (error) {
@@ -193,62 +193,62 @@ export class ThemeUtil {
    * 获取当前主题类型
    */
   static getCurrentTheme(): ThemeType {
-    return this.currentTheme;
+    return ThemeUtil.currentTheme;
   }
 
   /**
    * 获取当前主题配置
    */
   static getCurrentThemeConfig(): ThemeConfig {
-    if (this.currentTheme === ThemeType.AUTO) {
+    if (ThemeUtil.currentTheme === ThemeType.AUTO) {
       // 根据系统主题返回对应配置
-      return this.isDarkMode() ? this.DARK_THEME : this.LIGHT_THEME;
+      return ThemeUtil.isDarkMode() ? ThemeUtil.DARK_THEME : ThemeUtil.LIGHT_THEME;
     }
-    return this.currentTheme === ThemeType.DARK ? this.DARK_THEME : this.LIGHT_THEME;
+    return ThemeUtil.currentTheme === ThemeType.DARK ? ThemeUtil.DARK_THEME : ThemeUtil.LIGHT_THEME;
   }
 
   /**
    * 获取主题颜色
    */
   static getColor(colorName: keyof ThemeColors): string {
-    return this.getCurrentThemeConfig().colors[colorName];
+    return ThemeUtil.getCurrentThemeConfig().colors[colorName];
   }
 
   /**
    * 获取间距
    */
   static getSpacing(size: keyof ThemeConfig['spacing']): number {
-    return this.getCurrentThemeConfig().spacing[size];
+    return ThemeUtil.getCurrentThemeConfig().spacing[size];
   }
 
   /**
    * 获取圆角
    */
   static getBorderRadius(size: keyof ThemeConfig['borderRadius']): number {
-    return this.getCurrentThemeConfig().borderRadius[size];
+    return ThemeUtil.getCurrentThemeConfig().borderRadius[size];
   }
 
   /**
    * 获取字体大小
    */
   static getFontSize(size: keyof ThemeConfig['fontSize']): number {
-    return this.getCurrentThemeConfig().fontSize[size];
+    return ThemeUtil.getCurrentThemeConfig().fontSize[size];
   }
 
   /**
    * 添加主题变更监听器
    */
   static addThemeChangeListener(listener: (theme: ThemeType) => void): void {
-    this.listeners.push(listener);
+    ThemeUtil.listeners.push(listener);
   }
 
   /**
    * 移除主题变更监听器
    */
   static removeThemeChangeListener(listener: (theme: ThemeType) => void): void {
-    const index = this.listeners.indexOf(listener);
+    const index = ThemeUtil.listeners.indexOf(listener);
     if (index > -1) {
-      this.listeners.splice(index, 1);
+      ThemeUtil.listeners.splice(index, 1);
     }
   }
 
@@ -270,7 +270,7 @@ export class ThemeUtil {
    * 更新自动主题
    */
   private static async updateAutoTheme(): Promise<void> {
-    const isDark = this.isDarkMode();
+    const isDark = ThemeUtil.isDarkMode();
     console.log('系统主题检测结果:', isDark ? '深色' : '浅色');
   }
 
@@ -278,9 +278,9 @@ export class ThemeUtil {
    * 通知所有监听器
    */
   private static notifyListeners(): void {
-    this.listeners.forEach(listener => {
+    ThemeUtil.listeners.forEach(listener => {
       try {
-        listener(this.currentTheme);
+        listener(ThemeUtil.currentTheme);
       } catch (error) {
         console.error('主题监听器执行失败:', error);
       }
@@ -291,6 +291,6 @@ export class ThemeUtil {
    * 销毁主题系统
    */
   static destroy(): void {
-    this.listeners = [];
+    ThemeUtil.listeners = [];
   }
 }

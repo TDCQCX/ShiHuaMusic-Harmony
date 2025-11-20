@@ -12,24 +12,24 @@ export class PreferencesUtil {
    * @param context 应用上下文
    */
   static init(context: Context): void {
-    this.context = context;
-    this.initPromise = null; // 重置初始化状态
+    PreferencesUtil.context = context;
+    PreferencesUtil.initPromise = null; // 重置初始化状态
   }
 
   /**
    * 获取Preferences实例
    */
   private static async getPreferences(): Promise<preferences.Preferences> {
-    if (!this.context) {
+    if (!PreferencesUtil.context) {
       throw new Error('PreferencesUtil未初始化，请先调用init方法');
     }
 
-    if (!this.initPromise) {
-      this.initPromise = this.ensureInit();
+    if (!PreferencesUtil.initPromise) {
+      PreferencesUtil.initPromise = PreferencesUtil.ensureInit();
     }
-    await this.initPromise;
+    await PreferencesUtil.initPromise;
 
-    return preferences.getPreferences(this.context, this.STORE_NAME);
+    return preferences.getPreferences(PreferencesUtil.context, PreferencesUtil.STORE_NAME);
   }
 
   /**
@@ -47,7 +47,7 @@ export class PreferencesUtil {
    */
   static async putString(key: string, value: string): Promise<void> {
     try {
-      const prefs = await this.getPreferences();
+      const prefs = await PreferencesUtil.getPreferences();
       await prefs.put(key, value);
       await prefs.flush();
     } catch (error) {
@@ -63,7 +63,7 @@ export class PreferencesUtil {
    */
   static async getString(key: string, defaultValue: string = ''): Promise<string> {
     try {
-      const prefs = await this.getPreferences();
+      const prefs = await PreferencesUtil.getPreferences();
       const value = await prefs.get(key, defaultValue);
       return value as string;
     } catch (error) {
@@ -72,14 +72,9 @@ export class PreferencesUtil {
     }
   }
 
-  /**
-   * 存储数字值
-   * @param key 键
-   * @param value 值
-   */
   static async putNumber(key: string, value: number): Promise<void> {
     try {
-      const prefs = await this.getPreferences();
+      const prefs = await PreferencesUtil.getPreferences();
       await prefs.put(key, value);
       await prefs.flush();
     } catch (error) {
@@ -88,14 +83,9 @@ export class PreferencesUtil {
     }
   }
 
-  /**
-   * 获取数字值
-   * @param key 键
-   * @param defaultValue 默认值
-   */
   static async getNumber(key: string, defaultValue: number = 0): Promise<number> {
     try {
-      const prefs = await this.getPreferences();
+      const prefs = await PreferencesUtil.getPreferences();
       const value = await prefs.get(key, defaultValue);
       return value as number;
     } catch (error) {
@@ -104,14 +94,9 @@ export class PreferencesUtil {
     }
   }
 
-  /**
-   * 存储布尔值
-   * @param key 键
-   * @param value 值
-   */
   static async putBoolean(key: string, value: boolean): Promise<void> {
     try {
-      const prefs = await this.getPreferences();
+      const prefs = await PreferencesUtil.getPreferences();
       await prefs.put(key, value);
       await prefs.flush();
     } catch (error) {
@@ -120,14 +105,9 @@ export class PreferencesUtil {
     }
   }
 
-  /**
-   * 获取布尔值
-   * @param key 键
-   * @param defaultValue 默认值
-   */
   static async getBoolean(key: string, defaultValue: boolean = false): Promise<boolean> {
     try {
-      const prefs = await this.getPreferences();
+      const prefs = await PreferencesUtil.getPreferences();
       const value = await prefs.get(key, defaultValue);
       return value as boolean;
     } catch (error) {
@@ -136,29 +116,19 @@ export class PreferencesUtil {
     }
   }
 
-  /**
-   * 存储JSON对象
-   * @param key 键
-   * @param value 值
-   */
   static async putObject<T>(key: string, value: T): Promise<void> {
     try {
       const jsonString = JSON.stringify(value);
-      await this.putString(key, jsonString);
+      await PreferencesUtil.putString(key, jsonString);
     } catch (error) {
       console.error(`存储对象失败: ${key}`, error);
       throw error;
     }
   }
 
-  /**
-   * 获取JSON对象
-   * @param key 键
-   * @param defaultValue 默认值
-   */
   static async getObject<T>(key: string, defaultValue: T | null = null): Promise<T | null> {
     try {
-      const jsonString = await this.getString(key, '');
+      const jsonString = await PreferencesUtil.getString(key, '');
       if (!jsonString) {
         return defaultValue;
       }
@@ -169,13 +139,9 @@ export class PreferencesUtil {
     }
   }
 
-  /**
-   * 删除指定键的值
-   * @param key 键
-   */
   static async delete(key: string): Promise<void> {
     try {
-      const prefs = await this.getPreferences();
+      const prefs = await PreferencesUtil.getPreferences();
       await prefs.delete(key);
       await prefs.flush();
     } catch (error) {
@@ -184,12 +150,9 @@ export class PreferencesUtil {
     }
   }
 
-  /**
-   * 清空所有数据
-   */
   static async clear(): Promise<void> {
     try {
-      const prefs = await this.getPreferences();
+      const prefs = await PreferencesUtil.getPreferences();
       await prefs.clear();
       await prefs.flush();
     } catch (error) {
@@ -204,7 +167,7 @@ export class PreferencesUtil {
    */
   static async has(key: string): Promise<boolean> {
     try {
-      const prefs = await this.getPreferences();
+      const prefs = await PreferencesUtil.getPreferences();
       return await prefs.has(key);
     } catch (error) {
       console.error(`检查键是否存在失败: ${key}`, error);
@@ -217,7 +180,7 @@ export class PreferencesUtil {
    */
   static async getAllKeys(): Promise<string[]> {
     try {
-      const prefs = await this.getPreferences();
+      const prefs = await PreferencesUtil.getPreferences();
       return await prefs.getAllKeys();
     } catch (error) {
       console.error('获取所有键失败:', error);

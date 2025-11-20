@@ -6,13 +6,10 @@
 import router from '@ohos.router'
 import { GlobalDataManager } from '../../utils/GlobalDataManager'
 import { ThemeUtil } from '../../utils/ThemeUtil'
-import { SongListItem, ApiResponse } from '../../types/common'
+import { SongListItem, ApiResponse, SearchSuggestion } from '../../types/common'
 import { HttpUtil } from '../../utils/HttpUtil'
 
-interface SearchKeyword {
-  first: string
-  second: string
-}
+// 已从 types/common.ets 导入 SearchSuggestion
 
 interface SearchHistory {
   id: string
@@ -65,7 +62,7 @@ interface SearchPlaylist {
 export struct SearchPage {
   @State searchKeyword: string = ''
   @State searchHistory: SearchHistory[] = []
-  @State hotKeywords: SearchKeyword[] = []
+  @State hotKeywords: SearchSuggestion[] = []
   @State searchResults: SearchResult = {
     songs: [],
     artists: [],
@@ -110,17 +107,17 @@ export struct SearchPage {
     // TODO: 调用真实API
     // 模拟数据
     this.hotKeywords = [
-      { first: '周杰伦', second: '热门' },
-      { first: '薛之谦', second: '上升最快' },
-      { first: '告白气球', second: '歌曲' },
-      { first: '青花瓷', second: '经典' },
-      { first: '陈奕迅', second: '热门' },
-      { first: '邓紫棋', second: '上升最快' },
-      { first: '林俊杰', second: '热门' },
-      { first: '张杰', second: '上升最快' },
-      { first: '李荣浩', second: '热门' },
-      { first: '毛不易', second: '上升最快' }
-    ]
+          { first: '周杰伦', second: '热门' },
+          { first: '薛之谦', second: '上升最快' },
+          { first: '告白气球', second: '歌曲' },
+          { first: '青花瓷', second: '经典' },
+          { first: '陈奕迅', second: '热门' },
+          { first: '邓紫棋', second: '上升最快' },
+          { first: '林俊杰', second: '热门' },
+          { first: '张杰', second: '上升最快' },
+          { first: '李荣浩', second: '热门' },
+          { first: '毛不易', second: '上升最快' }
+        ] as SearchSuggestion[]
   }
 
   /**
@@ -241,7 +238,7 @@ export struct SearchPage {
             trackCount: 100
           }
         ]
-      }
+      } as SearchResult
     } catch (error) {
       console.error('搜索失败:', error)
     } finally {

@@ -260,14 +260,14 @@ export class GlobalDataManager {
    * @param data 数据对象或数组
    * @param fields 图片字段名数组
    */
-  processImageUrlsInData(data: any, fields: string[]): any {
+  processImageUrlsInData(data: ProcessedData[] | ProcessedData, fields: string[]): ProcessedData[] | ProcessedData {
     if (!Array.isArray(data)) return data;
     
     return data.map(item => {
-      const processedItem = { ...item };
+      const processedItem: ProcessedData = { ...item };
       fields.forEach(field => {
         if (processedItem[field]) {
-          processedItem[field] = this.processImageUrl(processedItem[field]);
+          processedItem[field] = this.processImageUrl(processedItem[field] as string);
         }
       });
       return processedItem;
@@ -278,16 +278,7 @@ export class GlobalDataManager {
    * 封装网络请求
    * @param options 请求选项
    */
-  async request(options: {
-    url: string;
-    method?: string;
-    data?: any;
-    params?: Record<string, any>;
-    success?: (res: any) => void;
-    fail?: (err: Error) => void;
-    complete?: (res: any) => void;
-    showLoading?: boolean;
-  }): Promise<any> {
+  async request(options: RequestOptions): Promise<ApiResponse> {
     const { url, method = 'GET', data, params, showLoading = true } = options;
     
     // 构建完整URL
@@ -314,7 +305,7 @@ export class GlobalDataManager {
         throw new Error('登录已过期，请重新登录');
       }
       
-      return result;
+      return result as ApiResponse;
     } catch (error) {
       console.error('网络请求失败:', error);
       throw error;
@@ -362,4 +353,44 @@ export class GlobalDataManager {
   setCurrentIndex(index: number): void {
     this.audioManager.setCurrentIndex(index);
   }
+}
+
+/**
+ * 图片数据处理接口
+ */
+interface ImageData {
+  [key: string]: string | undefined;
+}
+
+/**
+ * 网络请求响应接口
+ */
+interface ApiResponse {
+  success?: boolean;
+  code?: number;
+  statusCode?: number;
+  data?: Record<string, any> | any[] | string | number | boolean | null;
+  message?: string;
+  error?: string;
+}
+
+/**
+ * 网络请求选项接口
+ */
+interface RequestOptions {
+  url: string;
+  method?: string;
+  data?: Record<string, any> | any[] | string | number | boolean | null;
+  params?: Record<string, string | number | boolean>;
+  success?: (res: ApiResponse) => void;
+  fail?: (err: Error) => void;
+  complete?: (res: ApiResponse) => void;
+  showLoading?: boolean;
+}
+
+/**
+ * 通用数据处理接口
+ */
+interface ProcessedData extends ImageData {
+  [key: string]: string | number | boolean | undefined;
 }

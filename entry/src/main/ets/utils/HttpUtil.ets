@@ -2,7 +2,7 @@
 import http from '@ohos.net.http';
 import connection from '@ohos.net.connection';
 import prompt from '@ohos.promptAction';
-import { RequestConfig, ApiResponse } from '../types/common';
+import { RequestConfig, ApiResponse, RequestStats } from '../types/common';
 
 export class HttpUtil {
   private static baseUrl: string = 'http://192.168.66.241:8080';
@@ -46,7 +46,7 @@ export class HttpUtil {
    * @param baseUrl API基础URL
    */
   static setBaseUrl(baseUrl: string): void {
-    this.baseUrl = baseUrl;
+    HttpUtil.baseUrl = baseUrl;
   }
 
   /**
@@ -54,7 +54,7 @@ export class HttpUtil {
    * @param imageBaseUrl 图片服务器URL
    */
   static setImageBaseUrl(imageBaseUrl: string): void {
-    this.imageBaseUrl = imageBaseUrl;
+    HttpUtil.imageBaseUrl = imageBaseUrl;
   }
 
   /**
@@ -62,21 +62,21 @@ export class HttpUtil {
    * @param token 认证令牌
    */
   static setToken(token: string): void {
-    this.token = token;
+    HttpUtil.token = token;
   }
 
   /**
    * 清除Token
    */
   static clearToken(): void {
-    this.token = '';
+    HttpUtil.token = '';
   }
 
   /**
    * 获取当前Token
    */
   static getToken(): string {
-    return this.token;
+    return HttpUtil.token;
   }
 
   /**
@@ -86,7 +86,7 @@ export class HttpUtil {
    */
   static async request<T>(config: RequestConfig, retryCount: number = 0): Promise<ApiResponse<T>> {
     // 检查网络状态
-    if (!this.checkNetworkStatus()) {
+    if (!HttpUtil.checkNetworkStatus()) {
       prompt.showToast({
         message: '网络连接不可用，请检查网络设置',
         duration: 3000
@@ -97,8 +97,8 @@ export class HttpUtil {
     const httpRequest = http.createHttp();
     
     try {
-      const fullUrl = this.buildFullUrl(config.url, config.params);
-      const headers = this.buildHeaders(config.headers);
+      const fullUrl = HttpUtil.buildFullUrl(config.url, config.params);
+      const headers = HttpUtil.buildHeaders(config.headers);
       
       // 显示加载提示
       if (config.showLoading !== false) {
@@ -111,14 +111,14 @@ export class HttpUtil {
       console.log(`[HTTP] 发送请求 (第${retryCount + 1}次尝试):`, fullUrl, config.method || 'GET');
       
       const httpRequestOptions: http.HttpRequestOptions = {
-        method: this.mapHttpMethod(config.method || 'GET'),
+        method: HttpUtil.mapHttpMethod(config.method || 'GET'),
         header: headers,
         extraData: config.data || {},
         expectDataType: http.HttpDataType.STRING,
         usingCache: config.useCache || false,
         priority: 1,
-        connectTimeout: config.timeout || this.DEFAULT_TIMEOUT,
-        readTimeout: config.timeout || this.DEFAULT_TIMEOUT
+        connectTimeout: config.timeout || HttpUtil.DEFAULT_TIMEOUT,
+        readTimeout: config.timeout || HttpUtil.DEFAULT_TIMEOUT
       };
 
       const response = await httpRequest.request(fullUrl, httpRequestOptions);
@@ -136,16 +136,16 @@ export class HttpUtil {
         
         // 处理401错误
         if (response.responseCode === 401 || result.code === 401) {
-          this.handleUnauthorized();
+          HttpUtil.handleUnauthorized();
           throw new Error('登录已过期，请重新登录');
         }
         
         return result;
-      } else if (response.responseCode >= 500 && retryCount < this.RETRY_COUNT) {
+      } else if (response.responseCode >= 500 && retryCount < HttpUtil.RETRY_COUNT) {
         // 服务器错误且可重试
         console.warn(`[HTTP] 服务器错误 ${response.responseCode}，进行第${retryCount + 1}次重试...`);
-        await this.delay(1000 * (retryCount + 1)); // 指数退避
-        return this.request<T>(config, retryCount + 1);
+        await HttpUtil.delay(1000 * (retryCount + 1)); // 指数退避
+        return HttpUtil.request<T>(config, retryCount + 1);
       } else {
         throw new Error(`请求失败: ${response.responseCode}`);
       }
@@ -159,15 +159,15 @@ export class HttpUtil {
       
       // 网络错误且可重试
       if ((error.message.includes('Network Error') || error.message.includes('connection')) && 
-          retryCount < this.RETRY_COUNT) {
+          retryCount < HttpUtil.RETRY_COUNT) {
         console.warn(`[HTTP] 网络错误，进行第${retryCount + 1}次重试...`);
-        await this.delay(1000 * (retryCount + 1));
-        return this.request<T>(config, retryCount + 1);
+        await HttpUtil.delay(1000 * (retryCount + 1));
+        return HttpUtil.request<T>(config, retryCount + 1);
       }
       
       const errorMessage = error.message || '网络请求失败';
       prompt.showToast({
-        message: this.getErrorMessage(errorMessage),
+        message: HttpUtil.getErrorMessage(errorMessage),
         duration: 2000
       });
       
@@ -214,7 +214,7 @@ export class HttpUtil {
    * @param showLoading 是否显示加载提示
    */
   static async get<T>(url: string, params?: Record<string, string | number>, showLoading: boolean = true): Promise<ApiResponse<T>> {
-    return this.request<T>({
+    return HttpUtil.request<T>({
       url,
       method: 'GET',
       params,
@@ -229,7 +229,7 @@ export class HttpUtil {
    * @param showLoading 是否显示加载提示
    */
   static async post<T>(url: string, data?: Object, showLoading: boolean = true): Promise<ApiResponse<T>> {
-    return this.request<T>({
+    return HttpUtil.request<T>({
       url,
       method: 'POST',
       data,
@@ -243,7 +243,7 @@ export class HttpUtil {
    * @param data 请求数据
    */
   static async put<T>(url: string, data?: Object): Promise<ApiResponse<T>> {
-    return this.request<T>({
+    return HttpUtil.request<T>({
       url,
       method: 'PUT',
       data
@@ -255,7 +255,7 @@ export class HttpUtil {
    * @param url 请求URL
    */
   static async delete<T>(url: string): Promise<ApiResponse<T>> {
-    return this.request<T>({
+    return HttpUtil.request<T>({
       url,
       method: 'DELETE'
     });
@@ -267,7 +267,7 @@ export class HttpUtil {
    * @param params 查询参数
    */
   private static buildFullUrl(url: string, params?: Record<string, string | number>): string {
-    let fullUrl: string = `${this.baseUrl}${url}`;
+    let fullUrl: string = `${HttpUtil.baseUrl}${url}`;
     
     if (params) {
       const queryString = Object.keys(params)
@@ -292,8 +292,8 @@ export class HttpUtil {
     };
 
     // 添加Token
-    if (this.token) {
-      const tokenValue: string = this.token.startsWith('Bearer ') ? this.token : `Bearer ${this.token}`;
+    if (HttpUtil.token) {
+      const tokenValue: string = HttpUtil.token.startsWith('Bearer ') ? HttpUtil.token : `Bearer ${HttpUtil.token}`;
       headers['Authorization'] = tokenValue;
     }
 
@@ -328,7 +328,7 @@ export class HttpUtil {
    * 处理未授权错误
    */
   private static handleUnauthorized(): void {
-    this.clearToken();
+    HttpUtil.clearToken();
     // TODO: 跳转到登录页面或显示登录提示
   }
 
@@ -348,15 +348,15 @@ export class HttpUtil {
     progressCallback?: (progress: number) => void
   ): Promise<ApiResponse<T>> {
     // 检查网络状态
-    if (!this.checkNetworkStatus()) {
+    if (!HttpUtil.checkNetworkStatus()) {
       throw new Error('网络不可用');
     }
 
     const httpRequest = http.createHttp();
     
     try {
-      const fullUrl = this.buildFullUrl(url);
-      const headers = this.buildHeaders();
+      const fullUrl = HttpUtil.buildFullUrl(url);
+      const headers = HttpUtil.buildHeaders();
       
       prompt.showLoading({
         message: '上传中...',
@@ -378,8 +378,8 @@ export class HttpUtil {
           ...formData
         },
         expectDataType: http.HttpDataType.STRING,
-        connectTimeout: this.DEFAULT_TIMEOUT,
-        readTimeout: this.DEFAULT_TIMEOUT
+        connectTimeout: HttpUtil.DEFAULT_TIMEOUT,
+        readTimeout: HttpUtil.DEFAULT_TIMEOUT
       });
 
       console.log('[HTTP] 上传响应:', uploadResponse.responseCode);
@@ -419,7 +419,7 @@ export class HttpUtil {
     progressCallback?: (progress: number) => void
   ): Promise<void> {
     // 检查网络状态
-    if (!this.checkNetworkStatus()) {
+    if (!HttpUtil.checkNetworkStatus()) {
       throw new Error('网络不可用');
     }
 
@@ -432,8 +432,8 @@ export class HttpUtil {
         method: http.RequestMethod.GET,
         expectDataType: http.HttpDataType.STRING,
         usingCache: false,
-        connectTimeout: this.DEFAULT_TIMEOUT,
-        readTimeout: this.DEFAULT_TIMEOUT
+        connectTimeout: HttpUtil.DEFAULT_TIMEOUT,
+        readTimeout: HttpUtil.DEFAULT_TIMEOUT
       });
 
       console.log('[HTTP] 下载响应:', downloadResponse.responseCode);
@@ -475,7 +475,7 @@ export class HttpUtil {
       try {
         const pathStartIndex: number = url.indexOf('/', url.indexOf('://') + 3);
         const path: string = pathStartIndex !== -1 ? url.substring(pathStartIndex) : '/';
-        return `${this.imageBaseUrl}${path}`;
+        return `${HttpUtil.imageBaseUrl}${path}`;
       } catch (e) {
         console.warn('Failed to process URL:', url, e);
         return url;
@@ -484,14 +484,14 @@ export class HttpUtil {
     
     // 否则拼接图片服务器地址
     const cleanPath: string = url.startsWith('/') ? url : '/' + url;
-    return `${this.imageBaseUrl}${cleanPath}`;
+    return `${HttpUtil.imageBaseUrl}${cleanPath}`;
   }
 
   /**
    * 获取网络请求统计信息
    */
-  static getRequestStats(): { success: number; failed: number; total: number } {
+  static getRequestStats(): RequestStats {
     // 这里可以添加请求统计逻辑
-    return { success: 0, failed: 0, total: 0 };
+    return { success: 0, failed: 0, total: 0 } as RequestStats;
   }
 }

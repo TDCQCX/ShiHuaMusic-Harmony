@@ -1,3 +1,5 @@
+import { Position } from '../types/common'
+
 @Entry
 @Component
 struct Index {
@@ -10,9 +12,9 @@ struct Index {
         .fontSize($r('app.float.page_text_font_size'))
         .fontWeight(FontWeight.Bold)
         .alignRules({
-          center: { anchor: '__container__', align: VerticalAlign.Center },
-          middle: { anchor: '__container__', align: HorizontalAlign.Center }
-        })
+          center: { anchor: '__container__', align: VerticalAlign.Center } as Position,
+          middle: { anchor: '__container__', align: HorizontalAlign.Center } as Position
+        } as Record<string, Position>)
         .onClick(() => {
           this.message = 'Welcome';
         })

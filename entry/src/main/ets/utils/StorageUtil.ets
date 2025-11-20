@@ -12,7 +12,7 @@ export class StorageUtil {
    * 获取Preferences实例
    */
   private static async getPreferences(): Promise<preferences.Preferences> {
-    return await preferences.getPreferences(getContext(), this.PREFERENCES_NAME);
+    return await preferences.getPreferences(getContext(), StorageUtil.PREFERENCES_NAME);
   }
 
   /**
@@ -21,8 +21,8 @@ export class StorageUtil {
    */
   static async saveUserInfo(userInfo: UserInfo): Promise<void> {
     try {
-      const prefs: preferences.Preferences = await this.getPreferences();
-      await prefs.put(this.USER_INFO_KEY, JSON.stringify(userInfo));
+      const prefs: preferences.Preferences = await StorageUtil.getPreferences();
+      await prefs.put(StorageUtil.USER_INFO_KEY, JSON.stringify(userInfo));
       await prefs.flush();
     } catch (error) {
       console.error('保存用户信息失败:', error);
@@ -34,8 +34,8 @@ export class StorageUtil {
    */
   static async getUserInfo(): Promise<UserInfo | null> {
     try {
-      const prefs: preferences.Preferences = await this.getPreferences();
-      const userInfoStr: string = await prefs.get(this.USER_INFO_KEY, '') as string;
+      const prefs: preferences.Preferences = await StorageUtil.getPreferences();
+      const userInfoStr: string = await prefs.get(StorageUtil.USER_INFO_KEY, '') as string;
       if (userInfoStr) {
         return JSON.parse(userInfoStr);
       }
@@ -51,8 +51,8 @@ export class StorageUtil {
    */
   static async removeUserInfo(): Promise<void> {
     try {
-      const prefs: preferences.Preferences = await this.getPreferences();
-      await prefs.delete(this.USER_INFO_KEY);
+      const prefs: preferences.Preferences = await StorageUtil.getPreferences();
+      await prefs.delete(StorageUtil.USER_INFO_KEY);
       await prefs.flush();
     } catch (error) {
       console.error('删除用户信息失败:', error);
@@ -65,8 +65,8 @@ export class StorageUtil {
    */
   static async saveToken(token: string): Promise<void> {
     try {
-      const prefs: preferences.Preferences = await this.getPreferences();
-      await prefs.put(this.TOKEN_KEY, token);
+      const prefs: preferences.Preferences = await StorageUtil.getPreferences();
+      await prefs.put(StorageUtil.TOKEN_KEY, token);
       await prefs.flush();
     } catch (error) {
       console.error('保存Token失败:', error);
@@ -78,8 +78,8 @@ export class StorageUtil {
    */
   static async getToken(): Promise<string> {
     try {
-      const prefs: preferences.Preferences = await this.getPreferences();
-      return await prefs.get(this.TOKEN_KEY, '') as string;
+      const prefs: preferences.Preferences = await StorageUtil.getPreferences();
+      return await prefs.get(StorageUtil.TOKEN_KEY, '') as string;
     } catch (error) {
       console.error('获取Token失败:', error);
       return '';
@@ -91,8 +91,8 @@ export class StorageUtil {
    */
   static async removeToken(): Promise<void> {
     try {
-      const prefs: preferences.Preferences = await this.getPreferences();
-      await prefs.delete(this.TOKEN_KEY);
+      const prefs: preferences.Preferences = await StorageUtil.getPreferences();
+      await prefs.delete(StorageUtil.TOKEN_KEY);
       await prefs.flush();
     } catch (error) {
       console.error('删除Token失败:', error);
@@ -104,8 +104,8 @@ export class StorageUtil {
    */
   static async setHasShownWelcome(hasShown: boolean): Promise<void> {
     try {
-      const prefs: preferences.Preferences = await this.getPreferences();
-      await prefs.put(this.HAS_SHOWN_WELCOME_KEY, hasShown);
+      const prefs: preferences.Preferences = await StorageUtil.getPreferences();
+      await prefs.put(StorageUtil.HAS_SHOWN_WELCOME_KEY, hasShown);
       await prefs.flush();
     } catch (error) {
       console.error('设置欢迎弹窗显示状态失败:', error);
@@ -117,8 +117,8 @@ export class StorageUtil {
    */
   static async getHasShownWelcome(): Promise<boolean> {
     try {
-      const prefs: preferences.Preferences = await this.getPreferences();
-      return await prefs.get(this.HAS_SHOWN_WELCOME_KEY, false) as boolean;
+      const prefs: preferences.Preferences = await StorageUtil.getPreferences();
+      return await prefs.get(StorageUtil.HAS_SHOWN_WELCOME_KEY, false) as boolean;
     } catch (error) {
       console.error('获取欢迎弹窗显示状态失败:', error);
       return false;
@@ -130,7 +130,7 @@ export class StorageUtil {
    */
   static async clearAll(): Promise<void> {
     try {
-      const prefs: preferences.Preferences = await this.getPreferences();
+      const prefs: preferences.Preferences = await StorageUtil.getPreferences();
       await prefs.clear();
       await prefs.flush();
     } catch (error) {

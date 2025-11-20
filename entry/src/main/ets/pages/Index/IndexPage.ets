@@ -118,14 +118,14 @@ struct IndexPage {
   private playSong(song: SongListItem, playlist: SongListItem[] = []): void {
     // 转换为完整的SongInfo格式
     const songInfo: SongInfo = {
-      id: song.id,
-      name: song.name,
-      artists: song.artists || [],
-      album: song.album || { id: 0, name: '', picUrl: '' },
-      duration: song.duration || 0,
-      url: song.url || '',
-      picUrl: song.picUrl || ''
-    };
+        id: song.id,
+        name: song.name,
+        artists: song.artists || [],
+        album: song.album || { id: 0, name: '', picUrl: '' },
+        duration: song.duration || 0,
+        url: song.url || '',
+        picUrl: song.picUrl || song.coverUrl || ''
+      };
 
     const playlistInfo: SongInfo[] = playlist.length > 0 ? 
       playlist.map(item => ({
@@ -135,7 +135,7 @@ struct IndexPage {
         album: item.album || { id: 0, name: '', picUrl: '' },
         duration: item.duration || 0,
         url: item.url || '',
-        picUrl: item.picUrl || ''
+        picUrl: item.picUrl || item.coverUrl || ''
       })) : [songInfo];
 
     // 获取音频管理器并播放
@@ -336,7 +336,7 @@ struct IndexPage {
         Row() {
           ForEach(this.recommendedPlaylists, (playlist: PlaylistInfo, index: number) => {
             Column() {
-              Image(playlist.coverUrl || playlist.picUrl || '')
+              Image(playlist.coverUrl || '')
                 .width(120)
                 .height(120)
                 .borderRadius(ThemeUtil.getBorderRadius('lg'))

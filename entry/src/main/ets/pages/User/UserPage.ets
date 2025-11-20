@@ -275,7 +275,7 @@ export struct UserPage {
       .layoutWeight(1)
 
       // 箭头
-      Image($r('app.media.arrow_right'))
+      Image($r('app.media.arrow-right'))
         .width(20)
         .height(20)
     }
@@ -323,7 +323,7 @@ export struct UserPage {
         .fontColor(ThemeUtil.getColor('textPrimary'))
         .layoutWeight(1)
 
-      Image($r('app.media.arrow_right'))
+      Image($r('app.media.arrow-right'))
         .width(20)
         .height(20)
     }

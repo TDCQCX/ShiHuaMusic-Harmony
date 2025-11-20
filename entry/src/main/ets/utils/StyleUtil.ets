@@ -13,7 +13,7 @@ export class StyleUtil {
    * 初始化样式系统
    */
   static async init(): Promise<void> {
-    if (this.isInitialized) {
+    if (StyleUtil.isInitialized) {
       return;
     }
 
@@ -23,13 +23,13 @@ export class StyleUtil {
       
       // 添加主题变更监听器
       ThemeUtil.addThemeChangeListener((theme: ThemeType) => {
-        this.currentTheme = theme;
-        this.updatePageStyles();
+        StyleUtil.currentTheme = theme;
+        StyleUtil.updatePageStyles();
       });
       
       // 获取当前主题
-      this.currentTheme = ThemeUtil.getCurrentTheme();
-      this.isInitialized = true;
+      StyleUtil.currentTheme = ThemeUtil.getCurrentTheme();
+      StyleUtil.isInitialized = true;
       
       console.log('样式系统初始化完成');
     } catch (error) {

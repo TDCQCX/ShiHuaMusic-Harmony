@@ -136,15 +136,15 @@ export struct BottomPlayer {
   private getPlayModeIcon(): string | Resource {
     switch (this.playMode) {
       case PlayMode.SEQUENCE:
-        return $r('app.media.顺序播放');
+        return $r('app.media.sequence-play');
       case PlayMode.LOOP:
-        return $r('app.media.列表循环');
+        return $r('app.media.list-loop');
       case PlayMode.SINGLE:
-        return $r('app.media.单曲循环');
+        return $r('app.media.single-loop');
       case PlayMode.RANDOM:
         return $r('app.media.random');
       default:
-        return $r('app.media.顺序播放');
+        return $r('app.media.sequence-play');
     }
   }
 

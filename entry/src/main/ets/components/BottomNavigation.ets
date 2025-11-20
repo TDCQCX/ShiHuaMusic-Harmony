@@ -7,6 +7,16 @@ import { router } from '@kit.ArkUI';
 import { ThemeUtil } from '../utils/ThemeUtil';
 
 /**
+ * 底部导航项接口
+ */
+interface TabItem {
+  name: string;
+  icon: Resource;
+  activeIcon: Resource;
+  page: string;
+}
+
+/**
  * 底部导航栏组件
  * 模仿微信小程序的tabBar设计
  */
@@ -16,7 +26,7 @@ export struct BottomNavigation {
   private onTabChange?: (index: number) => void;
 
   // 导航项配置
-  private tabItems = [
+  private tabItems: TabItem[] = [
     {
       name: '发现',
       icon: $r('app.media.find'),
@@ -78,7 +88,7 @@ export struct BottomNavigation {
 
   build() {
     Row() {
-      ForEach(this.tabItems, (item: any, index: number) => {
+      ForEach(this.tabItems, (item: TabItem, index: number) => {
         Column() {
           Image(index === this.currentIndex ? item.activeIcon : item.icon)
             .width(24)
@@ -97,7 +107,7 @@ export struct BottomNavigation {
         .onClick(() => {
           this.switchTab(index, item.page);
         })
-      }, (item: any, index: number) => index.toString())
+      }, (item: TabItem, index: number) => index.toString())
     }
     .width('100%')
     .height(ThemeUtil.getSpacing('lg') + 20)
