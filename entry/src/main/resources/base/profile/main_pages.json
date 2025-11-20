@@ -1,5 +1,13 @@
 {
   "src": [
-    "pages/Index"
+    "pages/Index/IndexPage",
+    "pages/User/UserPage",
+    "pages/Login/LoginPage",
+    "pages/Register/RegisterPage",
+    "pages/Library/LibraryPage",
+    "pages/MyFavorites/MyFavoritesPage",
+    "pages/MyPlaylists/MyPlaylistsPage",
+    "pages/RecentPlay/RecentPlayPage",
+    "pages/PlaylistDetail/PlaylistDetailPage"
   ]
 }
