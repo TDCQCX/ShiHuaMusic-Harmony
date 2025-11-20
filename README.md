@@ -1,6 +1,6 @@
 # ShiHuaMusic
 
-石花音乐播放器是一个基于HarmonyOS的音乐播放应用。
+ShiHua音乐播放器是一个基于HarmonyOS的音乐播放应用。
 
 ## 项目介绍
 
