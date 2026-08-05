@@ -1,140 +1,122 @@
-// 本地存储工具类
+/**
+ * 本地存储工具（Preferences 封装，ArkTS 规范）
+ */
 import preferences from '@ohos.data.preferences';
-import { UserInfo } from '../types/common';
+import { AppContext } from './AppContext';
 
 export class StorageUtil {
-  private static readonly USER_INFO_KEY: string = 'userInfo';
-  private static readonly TOKEN_KEY: string = 'token';
-  private static readonly HAS_SHOWN_WELCOME_KEY: string = 'hasShownWelcome';
-  private static readonly PREFERENCES_NAME: string = 'music_app_prefs';
+  private static readonly PREFERENCES_NAME: string = 'shihua_music';
 
-  /**
-   * 获取Preferences实例
-   */
   private static async getPreferences(): Promise<preferences.Preferences> {
-    return await preferences.getPreferences(getContext(), StorageUtil.PREFERENCES_NAME);
-  }
-
-  /**
-   * 保存用户信息
-   * @param userInfo 用户信息
-   */
-  static async saveUserInfo(userInfo: UserInfo): Promise<void> {
     try {
-      const prefs: preferences.Preferences = await StorageUtil.getPreferences();
-      await prefs.put(StorageUtil.USER_INFO_KEY, JSON.stringify(userInfo));
-      await prefs.flush();
-    } catch (error) {
-      console.error('保存用户信息失败:', error);
-    }
-  }
-
-  /**
-   * 获取用户信息
-   */
-  static async getUserInfo(): Promise<UserInfo | null> {
-    try {
-      const prefs: preferences.Preferences = await StorageUtil.getPreferences();
-      const userInfoStr: string = await prefs.get(StorageUtil.USER_INFO_KEY, '') as string;
-      if (userInfoStr) {
-        return JSON.parse(userInfoStr);
+      const context = AppContext.getContext();
+      if (context === null) {
+        throw new Error('AppContext 未初始化');
       }
-      return null;
+      return await preferences.getPreferences(context, StorageUtil.PREFERENCES_NAME);
     } catch (error) {
-      console.error('获取用户信息失败:', error);
-      return null;
+      console.error('获取 Preferences 失败:', error);
+      throw error as Error;
     }
   }
 
-  /**
-   * 删除用户信息
-   */
-  static async removeUserInfo(): Promise<void> {
+  static async getString(key: string, defaultValue: string = ''): Promise<string> {
     try {
-      const prefs: preferences.Preferences = await StorageUtil.getPreferences();
-      await prefs.delete(StorageUtil.USER_INFO_KEY);
+      const prefs = await StorageUtil.getPreferences();
+      const value = await prefs.get(key, defaultValue);
+      return value as string;
+    } catch (error) {
+      console.error('StorageUtil.getString failed:', key, error);
+      return defaultValue;
+    }
+  }
+
+  static async putString(key: string, value: string): Promise<void> {
+    try {
+      const prefs = await StorageUtil.getPreferences();
+      await prefs.put(key, value);
       await prefs.flush();
     } catch (error) {
-      console.error('删除用户信息失败:', error);
+      console.error('StorageUtil.putString failed:', key, error);
     }
   }
 
-  /**
-   * 保存Token
-   * @param token 认证令牌
-   */
-  static async saveToken(token: string): Promise<void> {
+  static async getNumber(key: string, defaultValue: number = 0): Promise<number> {
     try {
-      const prefs: preferences.Preferences = await StorageUtil.getPreferences();
-      await prefs.put(StorageUtil.TOKEN_KEY, token);
+      const prefs = await StorageUtil.getPreferences();
+      const value = await prefs.get(key, defaultValue);
+      return value as number;
+    } catch (error) {
+      console.error('StorageUtil.getNumber failed:', key, error);
+      return defaultValue;
+    }
+  }
+
+  static async putNumber(key: string, value: number): Promise<void> {
+    try {
+      const prefs = await StorageUtil.getPreferences();
+      await prefs.put(key, value);
       await prefs.flush();
     } catch (error) {
-      console.error('保存Token失败:', error);
+      console.error('StorageUtil.putNumber failed:', key, error);
     }
   }
 
-  /**
-   * 获取Token
-   */
-  static async getToken(): Promise<string> {
+  static async getBoolean(key: string, defaultValue: boolean = false): Promise<boolean> {
     try {
-      const prefs: preferences.Preferences = await StorageUtil.getPreferences();
-      return await prefs.get(StorageUtil.TOKEN_KEY, '') as string;
+      const prefs = await StorageUtil.getPreferences();
+      const value = await prefs.get(key, defaultValue);
+      return value as boolean;
     } catch (error) {
-      console.error('获取Token失败:', error);
-      return '';
+      console.error('StorageUtil.getBoolean failed:', key, error);
+      return defaultValue;
     }
   }
 
-  /**
-   * 删除Token
-   */
-  static async removeToken(): Promise<void> {
+  static async putBoolean(key: string, value: boolean): Promise<void> {
     try {
-      const prefs: preferences.Preferences = await StorageUtil.getPreferences();
-      await prefs.delete(StorageUtil.TOKEN_KEY);
+      const prefs = await StorageUtil.getPreferences();
+      await prefs.put(key, value);
       await prefs.flush();
     } catch (error) {
-      console.error('删除Token失败:', error);
+      console.error('StorageUtil.putBoolean failed:', key, error);
     }
   }
 
-  /**
-   * 设置欢迎弹窗显示状态
-   */
-  static async setHasShownWelcome(hasShown: boolean): Promise<void> {
+  static async getObject<T>(key: string, defaultValue: T | null = null): Promise<T | null> {
     try {
-      const prefs: preferences.Preferences = await StorageUtil.getPreferences();
-      await prefs.put(StorageUtil.HAS_SHOWN_WELCOME_KEY, hasShown);
+      const json = await StorageUtil.getString(key, '');
+      if (!json) {
+        return defaultValue;
+      }
+      return JSON.parse(json) as T;
+    } catch (error) {
+      console.error('StorageUtil.getObject failed:', key, error);
+      return defaultValue;
+    }
+  }
+
+  static async putObject<T>(key: string, value: T): Promise<void> {
+    await StorageUtil.putString(key, JSON.stringify(value));
+  }
+
+  static async remove(key: string): Promise<void> {
+    try {
+      const prefs = await StorageUtil.getPreferences();
+      await prefs.delete(key);
       await prefs.flush();
     } catch (error) {
-      console.error('设置欢迎弹窗显示状态失败:', error);
+      console.error('StorageUtil.remove failed:', key, error);
     }
   }
 
-  /**
-   * 获取欢迎弹窗显示状态
-   */
-  static async getHasShownWelcome(): Promise<boolean> {
+  static async clear(): Promise<void> {
     try {
-      const prefs: preferences.Preferences = await StorageUtil.getPreferences();
-      return await prefs.get(StorageUtil.HAS_SHOWN_WELCOME_KEY, false) as boolean;
-    } catch (error) {
-      console.error('获取欢迎弹窗显示状态失败:', error);
-      return false;
-    }
-  }
-
-  /**
-   * 清空所有数据
-   */
-  static async clearAll(): Promise<void> {
-    try {
-      const prefs: preferences.Preferences = await StorageUtil.getPreferences();
+      const prefs = await StorageUtil.getPreferences();
       await prefs.clear();
       await prefs.flush();
     } catch (error) {
-      console.error('清空数据失败:', error);
+      console.error('StorageUtil.clear failed:', error);
     }
   }
 }

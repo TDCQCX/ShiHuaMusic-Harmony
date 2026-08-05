@@ -1,565 +1,302 @@
 /**
- * 注册页面 - RegisterPage
- * 对应小程序 pages/register/register
+ * 注册页（用户名/邮箱/验证码/密码/确认密码）
  */
+import { NavUtil } from '../../utils/NavUtil';
+import { ApiService } from '../../api/ApiService';
+import { ThemeUtil } from '../../utils/ThemeUtil';
+import { RegisterRequest } from '../../types/common';
 
-import router from '@ohos.router'
-import { GlobalDataManager } from '../../utils/GlobalDataManager'
-import { HttpUtil } from '../../utils/HttpUtil'
-import { ThemeUtil } from '../../utils/ThemeUtil'
-
-interface RegisterData {
-  phone: string
-  email: string
-  password: string
-  confirmPassword: string
-  nickname: string
-  captcha: string
-}
-
+@Entry
 @Component
-export struct RegisterPage {
-  @State registerData: RegisterData = {
-    phone: '',
-    email: '',
-    password: '',
-    confirmPassword: '',
-    nickname: '',
-    captcha: ''
-  }
-  @State registerMethod: 'phone' | 'email' = 'phone'
-  @State captchaCountdown: number = 0
-  @State isLoading: boolean = false
-  @State showPassword: boolean = false
-  @State showConfirmPassword: boolean = false
+struct RegisterPage {
+  @State username: string = '';
+  @State email: string = '';
+  @State verificationCode: string = '';
+  @State password: string = '';
+  @State confirmPassword: string = '';
+  @State isLoading: boolean = false;
+  @State errorMessage: string = '';
+  @State fieldError: string = '';
+  @State countdown: number = 0;
 
-  private httpUtil: HttpUtil = new HttpUtil()
-  private globalDataManager: GlobalDataManager = GlobalDataManager.getInstance()
-  private captchaTimer: number = -1
+  private timerId: number = -1;
 
-  /**
-   * 页面即将消失
-   */
   aboutToDisappear(): void {
-    if (this.captchaTimer !== -1) {
-      clearInterval(this.captchaTimer)
+    if (this.timerId !== -1) {
+      clearInterval(this.timerId);
+      this.timerId = -1;
     }
   }
 
-  /**
-   * 发送验证码
-   */
-  private async sendCaptcha(): Promise<void> {
-    const contact = registerMethod === 'phone' ? this.registerData.phone : this.registerData.email
-    
-    if (!contact) {
-      return
+  private validate(): boolean {
+    const usernameRegex = /^[a-zA-Z0-9_-]{4,16}$/;
+    if (!usernameRegex.test(this.username)) {
+      this.errorMessage = '用户名格式：4-16位字符（字母、数字、下划线、连字符）';
+      return false;
     }
-
-    if (registerMethod === 'phone' && !/^1[3-9]\d{9}$/.test(contact)) {
-      return
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(this.email)) {
+      this.errorMessage = '请输入正确的邮箱格式';
+      return false;
     }
-
-    if (registerMethod === 'email' && !/^\w+([.-]\w+)*@\w+([.-]\w+)*\.\w+$/.test(contact)) {
-      return
+    const codeRegex = /^[0-9a-zA-Z]{6}$/;
+    if (!codeRegex.test(this.verificationCode)) {
+      this.errorMessage = '验证码格式：6位字符（大小写字母、数字）';
+      return false;
     }
+    const pwdRegex = /^(?![0-9]+$)(?![a-zA-Z]+$)[0-9A-Za-z\W]{8,18}$/;
+    if (!pwdRegex.test(this.password)) {
+      this.errorMessage = '密码格式：8-18位数字、字母、符号的任意两种组合';
+      return false;
+    }
+    if (!this.confirmPassword) {
+      this.errorMessage = '请再次输入密码';
+      return false;
+    }
+    if (this.password !== this.confirmPassword) {
+      this.errorMessage = '两次输入的密码不一致';
+      return false;
+    }
+    this.errorMessage = '';
+    return true;
+  }
 
+  private async handleSendCode(): Promise<void> {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(this.email)) {
+      this.fieldError = '请先输入正确的邮箱';
+      return;
+    }
     try {
-      // TODO: 调用真实API
-      // const response = await this.httpUtil.post('/auth/send-captcha', {
-      //   type: 'register',
-      //   contact: contact,
-      //   method: registerMethod
-      // })
-
-      // 模拟发送验证码
-      console.log(`发送验证码到 ${contact}`)
-      
-      // 开始倒计时
-      this.captchaCountdown = 60
-      this.captchaTimer = setInterval(() => {
-        if (this.captchaCountdown > 0) {
-          this.captchaCountdown--
-        } else {
-          clearInterval(this.captchaTimer)
-          this.captchaTimer = -1
-        }
-      }, 1000)
-    } catch (error) {
-      console.error('发送验证码失败:', error)
-    }
-  }
-
-  /**
-   * 注册验证
-   */
-  private validateForm(): boolean {
-    const { password, confirmPassword, nickname, captcha } = this.registerData
-    const contact = this.registerMethod === 'phone' ? this.registerData.phone : this.registerData.email
-
-    // 验证联系方式
-    if (!contact) {
-      return false
-    }
-
-    if (this.registerMethod === 'phone' && !/^1[3-9]\d{9}$/.test(contact)) {
-      return false
-    }
-
-    if (this.registerMethod === 'email' && !/^\w+([.-]\w+)*@\w+([.-]\w+)*\.\w+$/.test(contact)) {
-      return false
-    }
-
-    // 验证密码
-    if (!password || password.length < 6) {
-      return false
-    }
-
-    // 验证确认密码
-    if (password !== confirmPassword) {
-      return false
-    }
-
-    // 验证昵称
-    if (!nickname || nickname.length < 2) {
-      return false
-    }
-
-    // 验证验证码
-    if (!captcha) {
-      return false
-    }
-
-    return true
-  }
-
-  /**
-   * 提交注册
-   */
-  private async submitRegister(): Promise<void> {
-    if (!this.validateForm()) {
-      return
-    }
-
-    try {
-      this.isLoading = true
-
-      const requestData = {
-        password: this.registerData.password,
-        nickname: this.registerData.nickname,
-        captcha: this.registerData.captcha
-      }
-
-      if (this.registerMethod === 'phone') {
-        Object.assign(requestData, { phone: this.registerData.phone })
+      const result = await ApiService.sendVerificationCode(this.email);
+      if (result.code === 0) {
+        this.fieldError = '';
+        this.startCountdown();
       } else {
-        Object.assign(requestData, { email: this.registerData.email })
+        this.fieldError = result.message || '发送验证码失败';
       }
-
-      // TODO: 调用真实API
-      // const response = await this.httpUtil.post('/auth/register', requestData)
-      
-      // 模拟注册成功
-      await new Promise(resolve => setTimeout(resolve, 2000))
-
-      // 注册成功，跳转到首页
-      router.pushUrl({ url: '/pages/Index/IndexPage' })
     } catch (error) {
-      console.error('注册失败:', error)
-    } finally {
-      this.isLoading = false
+      this.fieldError = (error as Error).message;
     }
   }
 
-  /**
-   * 切换注册方式
-   */
-  private switchMethod(method: 'phone' | 'email'): void {
-    this.registerMethod = method
-    this.registerData.captcha = '' // 切换方式时清空验证码
+  private startCountdown(): void {
+    this.countdown = 60;
+    if (this.timerId !== -1) {
+      clearInterval(this.timerId);
+    }
+    this.timerId = setInterval(() => {
+      this.countdown--;
+      if (this.countdown <= 0) {
+        clearInterval(this.timerId);
+        this.timerId = -1;
+      }
+    }, 1000);
   }
 
-  /**
-   * 跳转到用户协议
-   */
-  private goToUserAgreement(): void {
-    // TODO: 实现用户协议页面
-    console.log('跳转到用户协议')
+  private async handleRegister(): Promise<void> {
+    if (!this.validate()) {
+      return;
+    }
+    this.isLoading = true;
+    this.errorMessage = '';
+    try {
+      const request: RegisterRequest = {
+        username: this.username,
+        email: this.email,
+        password: this.password,
+        verificationCode: this.verificationCode
+      };
+      const result = await ApiService.register(request);
+      if (result.code === 0) {
+        this.getUIContext().getPromptAction().showToast({
+          message: '注册成功，请登录',
+          duration: 1500
+        });
+        NavUtil.replace('pages/Login/LoginPage');
+      } else {
+        this.errorMessage = result.message || '注册失败';
+      }
+    } catch (error) {
+      this.errorMessage = (error as Error).message;
+    } finally {
+      this.isLoading = false;
+    }
   }
 
-  /**
-   * 跳转到隐私政策
-   */
-  private goToPrivacyPolicy(): void {
-    // TODO: 实现隐私政策页面
-    console.log('跳转到隐私政策')
+  private goToLogin(): void {
+    NavUtil.replace('pages/Login/LoginPage');
+  }
+
+  pageTransition() {
+    PageTransitionEnter({ duration: 260, curve: Curve.EaseOut })
+      .opacity(0)
+      .translate({ y: 24 })
+    PageTransitionExit({ duration: 200, curve: Curve.EaseIn })
+      .opacity(0)
   }
 
   build() {
     Column() {
-      // 顶部导航栏
-      this.buildHeader()
+      Row() {
+        Image($r('app.media.back'))
+          .width(24)
+          .height(24)
+          .onClick(() => NavUtil.back())
+        Blank()
+        Text('注册')
+          .fontSize(ThemeUtil.getFontSize('lg'))
+          .fontWeight(FontWeight.Bold)
+          .fontColor(ThemeUtil.getColor('textPrimary'))
+        Blank()
+        Text('')
+          .width(24)
+      }
+      .width('100%')
+      .height(56)
+      .padding({ left: ThemeUtil.getSpacing('md'), right: ThemeUtil.getSpacing('md') })
+      .backgroundColor(ThemeUtil.getColor('surface'))
 
+      // 整体靠上，与登录页保持一致的位置感
       Scroll() {
         Column() {
-          // 应用logo
-          this.buildLogo()
+          Text('创建账户')
+            .fontSize(ThemeUtil.getFontSize('xl'))
+            .fontWeight(FontWeight.Bold)
+            .fontColor(ThemeUtil.getColor('textPrimary'))
+            .width('100%')
+            .margin({ top: ThemeUtil.getSpacing('lg'), bottom: 4 })
+          Text('发现更多好音乐')
+            .fontSize(ThemeUtil.getFontSize('sm'))
+            .fontColor(ThemeUtil.getColor('textHint'))
+            .width('100%')
+            .margin({ bottom: ThemeUtil.getSpacing('lg') })
 
-          // 注册表单
-          this.buildRegisterForm()
+          this.buildInput('用户名', this.username, '请输入用户名（4-16位）', InputType.Normal, (value: string) => {
+            this.username = value;
+            this.errorMessage = '';
+          })
+          this.buildInput('邮箱', this.email, '请输入邮箱', InputType.Email, (value: string) => {
+            this.email = value;
+            this.errorMessage = '';
+          })
 
-          // 注册按钮
-          this.buildSubmitButton()
+          Column() {
+            Row() {
+              TextInput({ placeholder: '验证码（6位）', text: this.verificationCode })
+                .layoutWeight(1)
+                .height(48)
+                .backgroundColor(ThemeUtil.getColor('surface'))
+                .borderRadius(ThemeUtil.getBorderRadius('md'))
+                .onChange((value: string) => {
+                  this.verificationCode = value;
+                  this.errorMessage = '';
+                })
+              if (this.countdown > 0) {
+                Button(this.countdown.toString() + 's 后重试')
+                  .width(120)
+                  .height(48)
+                  .fontSize(ThemeUtil.getFontSize('sm'))
+                  .fontColor(ThemeUtil.getColor('error'))
+                  .backgroundColor(ThemeUtil.getColor('surface'))
+                  .borderWidth(1)
+                  .borderColor(ThemeUtil.getColor('error'))
+                  .borderRadius(ThemeUtil.getBorderRadius('md'))
+                  .margin({ left: ThemeUtil.getSpacing('sm') })
+              } else {
+                Button('获取验证码')
+                  .width(120)
+                  .height(48)
+                  .fontSize(ThemeUtil.getFontSize('sm'))
+                  .fontColor(ThemeUtil.getColor('onPrimary'))
+                  .backgroundColor(ThemeUtil.getColor('primary'))
+                  .borderRadius(ThemeUtil.getBorderRadius('md'))
+                  .margin({ left: ThemeUtil.getSpacing('sm') })
+                  .onClick(() => this.handleSendCode())
+              }
+            }
+            .width('100%')
 
-          // 底部协议
-          this.buildAgreementText()
+            if (this.fieldError.length > 0) {
+              Text(this.fieldError)
+                .fontSize(ThemeUtil.getFontSize('xs'))
+                .fontColor(ThemeUtil.getColor('error'))
+                .width('100%')
+                .margin({ top: ThemeUtil.getSpacing('xs') })
+            }
+          }
+          .width('100%')
+          .margin({ bottom: ThemeUtil.getSpacing('md') })
+
+          this.buildInput('密码', this.password, '请输入密码（8-18位）', InputType.Password, (value: string) => {
+            this.password = value;
+            this.errorMessage = '';
+          })
+          this.buildInput('确认密码', this.confirmPassword, '请再次输入密码', InputType.Password, (value: string) => {
+            this.confirmPassword = value;
+            this.errorMessage = '';
+          })
+
+          if (this.errorMessage.length > 0) {
+            Text(this.errorMessage)
+              .fontSize(ThemeUtil.getFontSize('xs'))
+              .fontColor(ThemeUtil.getColor('error'))
+              .width('100%')
+              .margin({ bottom: ThemeUtil.getSpacing('md') })
+          }
+
+          Button(this.isLoading ? '注册中...' : '注册')
+            .width('100%')
+            .height(48)
+            .fontSize(ThemeUtil.getFontSize('md'))
+            .fontColor(ThemeUtil.getColor('onPrimary'))
+            .backgroundColor(ThemeUtil.getColor('primary'))
+            .borderRadius(ThemeUtil.getBorderRadius('full'))
+            .enabled(!this.isLoading)
+            .onClick(() => this.handleRegister())
+            .margin({ bottom: ThemeUtil.getSpacing('md') })
+
+          Row() {
+            Text('已有账户？')
+              .fontSize(ThemeUtil.getFontSize('sm'))
+              .fontColor(ThemeUtil.getColor('textHint'))
+            Text('去登录')
+              .fontSize(ThemeUtil.getFontSize('sm'))
+              .fontColor(ThemeUtil.getColor('primary'))
+              .onClick(() => this.goToLogin())
+          }
+          .width('100%')
+          .justifyContent(FlexAlign.Center)
+          .margin({ bottom: ThemeUtil.getSpacing('xl') })
         }
         .width('100%')
+        .padding({ left: ThemeUtil.getSpacing('lg'), right: ThemeUtil.getSpacing('lg') })
       }
       .layoutWeight(1)
-
-      Blank()
+      .scrollBar(BarState.Off)
     }
     .width('100%')
     .height('100%')
     .backgroundColor(ThemeUtil.getColor('background'))
   }
 
-  /**
-   * 构建头部
-   */
   @Builder
-  private buildHeader() {
-    Row() {
-      Image($r('app.media.back'))
-        .width(24)
-        .height(24)
-        .onClick(() => router.back())
-
-      Blank()
-
-      Text('注册')
-        .fontSize(ThemeUtil.getFontSize('xl'))
-        .fontColor(ThemeUtil.getColor('textPrimary'))
-        .fontWeight(FontWeight.Bold)
-    }
-    .width('100%')
-    .height(56)
-    .padding({ left: ThemeUtil.getSpacing('md'), right: ThemeUtil.getSpacing('md') })
-    .backgroundColor(ThemeUtil.getColor('surface'))
-  }
-
-  /**
-   * 构建Logo
-   */
-  @Builder
-  private buildLogo() {
+  private buildInput(label: string, value: string, placeholder: string, inputType: InputType, onChange: (value: string) => void) {
     Column() {
-      Image($r('app.media.logo'))
-        .width(80)
-        .height(80)
-        .margin({ bottom: ThemeUtil.getSpacing('md') })
-
-      Text('欢迎注册')
-        .fontSize(ThemeUtil.getFontSize('xxl'))
-        .fontColor(ThemeUtil.getColor('textPrimary'))
-        .fontWeight(FontWeight.Bold)
-        .margin({ bottom: ThemeUtil.getSpacing('sm') })
-
-      Text('发现更多好音乐')
-        .fontSize(ThemeUtil.getFontSize('sm'))
+      Text(label)
+        .fontSize(ThemeUtil.getFontSize('xs'))
         .fontColor(ThemeUtil.getColor('textSecondary'))
-    }
-    .width('100%')
-    .height(180)
-    .justifyContent(FlexAlign.Center)
-    .margin({ top: ThemeUtil.getSpacing('md'), bottom: ThemeUtil.getSpacing('xl') })
-  }
-
-  /**
-   * 构建注册表单
-   */
-  @Builder
-  private buildRegisterForm() {
-    Column() {
-      // 注册方式切换
-      this.buildMethodTabs()
-
-      // 联系方式输入
-      this.buildContactInput()
-
-      // 昵称输入
-      this.buildNicknameInput()
-
-      // 密码输入
-      this.buildPasswordInput()
-
-      // 确认密码输入
-      this.buildConfirmPasswordInput()
-
-      // 验证码输入
-      this.buildCaptchaInput()
-    }
-    .width('100%')
-    .padding({ left: ThemeUtil.getSpacing('lg'), right: ThemeUtil.getSpacing('lg') })
-  }
-
-  /**
-   * 构建方式切换
-   */
-  @Builder
-  private buildMethodTabs() {
-    Row() {
-      Text('手机号注册')
-        .fontSize(ThemeUtil.getFontSize('md'))
-        .fontColor(this.registerMethod === 'phone' ? ThemeUtil.getColor('primary') : ThemeUtil.getColor('textHint'))
-        .fontWeight(this.registerMethod === 'phone' ? FontWeight.Bold : FontWeight.Normal)
-        .onClick(() => this.switchMethod('phone'))
-
-      Text(' | ')
-        .fontSize(ThemeUtil.getFontSize('md'))
-        .fontColor(ThemeUtil.getColor('textHint'))
-
-      Text('邮箱注册')
-        .fontSize(ThemeUtil.getFontSize('md'))
-        .fontColor(this.registerMethod === 'email' ? ThemeUtil.getColor('primary') : ThemeUtil.getColor('textHint'))
-        .fontWeight(this.registerMethod === 'email' ? FontWeight.Bold : FontWeight.Normal)
-        .onClick(() => this.switchMethod('email'))
-    }
-    .width('100%')
-    .height(50)
-    .justifyContent(FlexAlign.Center)
-    .margin({ bottom: ThemeUtil.getSpacing('md') })
-  }
-
-  /**
-   * 构建联系方式输入
-   */
-  @Builder
-  private buildContactInput() {
-    Row() {
-      Image($r('app.media.user'))
-        .width(16)
-        .height(16)
-        .margin({ right: 10 })
-
-      TextInput({
-        placeholder: this.registerMethod === 'phone' ? '请输入手机号' : '请输入邮箱',
-        text: this.registerMethod === 'phone' ? this.registerData.phone : this.registerData.email
-      })
-        .layoutWeight(1)
-        .backgroundColor(Color.Transparent)
-        .type(this.registerMethod === 'phone' ? InputType.PhoneNumber : InputType.Email)
-        .onChange((value: string) => {
-          if (this.registerMethod === 'phone') {
-            this.registerData.phone = value
-          } else {
-            this.registerData.email = value
-          }
-        })
-
-      if (this.captchaCountdown > 0) {
-        Text(`${this.captchaCountdown}s`)
-          .fontSize(ThemeUtil.getFontSize('sm'))
-          .fontColor(ThemeUtil.getColor('textHint'))
-      } else {
-        Text('获取验证码')
-          .fontSize(ThemeUtil.getFontSize('sm'))
-          .fontColor(ThemeUtil.getColor('primary'))
-          .onClick(() => this.sendCaptcha())
-      }
-    }
-    .width('100%')
-    .height(50)
-    .backgroundColor(ThemeUtil.getColor('surface'))
-    .borderRadius(ThemeUtil.getBorderRadius('md'))
-    .padding({ left: ThemeUtil.getSpacing('sm'), right: ThemeUtil.getSpacing('sm') })
-    .margin({ bottom: ThemeUtil.getSpacing('md') })
-  }
-
-  /**
-   * 构建昵称输入
-   */
-  @Builder
-  private buildNicknameInput() {
-    Row() {
-      Image($r('app.media.user'))
-        .width(16)
-        .height(16)
-        .margin({ right: 10 })
-
-      TextInput({
-        placeholder: '请输入昵称（2-20个字符）',
-        text: this.registerData.nickname
-      })
-        .layoutWeight(1)
-        .backgroundColor(Color.Transparent)
-        .onChange((value: string) => {
-          this.registerData.nickname = value
-        })
-    }
-    .width('100%')
-    .height(50)
-    .backgroundColor(ThemeUtil.getColor('surface'))
-    .borderRadius(ThemeUtil.getBorderRadius('md'))
-    .padding({ left: ThemeUtil.getSpacing('sm'), right: ThemeUtil.getSpacing('sm') })
-    .margin({ bottom: ThemeUtil.getSpacing('md') })
-  }
-
-  /**
-   * 构建密码输入
-   */
-  @Builder
-  private buildPasswordInput() {
-    Row() {
-      Image($r('app.media.lock'))
-        .width(16)
-        .height(16)
-        .margin({ right: 10 })
-
-      TextInput({
-        placeholder: '请输入密码（至少6位）',
-        text: this.registerData.password
-      })
-        .layoutWeight(1)
-        .backgroundColor(Color.Transparent)
-        .type(this.showPassword ? InputType.Normal : InputType.Password)
-        .onChange((value: string) => {
-          this.registerData.password = value
-        })
-
-      Image(this.showPassword ? $r('app.media.eye-open') : $r('app.media.eye-close'))
-        .width(16)
-        .height(16)
-        .onClick(() => {
-          this.showPassword = !this.showPassword
-        })
-    }
-    .width('100%')
-    .height(50)
-    .backgroundColor(ThemeUtil.getColor('surface'))
-    .borderRadius(ThemeUtil.getBorderRadius('md'))
-    .padding({ left: ThemeUtil.getSpacing('sm'), right: ThemeUtil.getSpacing('sm') })
-    .margin({ bottom: ThemeUtil.getSpacing('md') })
-  }
-
-  /**
-   * 构建确认密码输入
-   */
-  @Builder
-  private buildConfirmPasswordInput() {
-    Row() {
-      Image($r('app.media.lock'))
-        .width(16)
-        .height(16)
-        .margin({ right: 10 })
-
-      TextInput({
-        placeholder: '请再次输入密码',
-        text: this.registerData.confirmPassword
-      })
-        .layoutWeight(1)
-        .backgroundColor(Color.Transparent)
-        .type(this.showConfirmPassword ? InputType.Normal : InputType.Password)
-        .onChange((value: string) => {
-          this.registerData.confirmPassword = value
-        })
-
-      Image(this.showConfirmPassword ? $r('app.media.eye-open') : $r('app.media.eye-close'))
-        .width(16)
-        .height(16)
-        .onClick(() => {
-          this.showConfirmPassword = !this.showConfirmPassword
-        })
-    }
-    .width('100%')
-    .height(50)
-    .backgroundColor(ThemeUtil.getColor('surface'))
-    .borderRadius(ThemeUtil.getBorderRadius('md'))
-    .padding({ left: ThemeUtil.getSpacing('sm'), right: ThemeUtil.getSpacing('sm') })
-    .margin({ bottom: ThemeUtil.getSpacing('md') })
-  }
-
-  /**
-   * 构建验证码输入
-   */
-  @Builder
-  private buildCaptchaInput() {
-    Row() {
-      Image($r('app.media.captcha'))
-        .width(16)
-        .height(16)
-        .margin({ right: 10 })
-
-      TextInput({
-        placeholder: '请输入验证码',
-        text: this.registerData.captcha
-      })
-        .layoutWeight(1)
-        .backgroundColor(Color.Transparent)
-        .type(InputType.Number)
-        .onChange((value: string) => {
-          this.registerData.captcha = value
-        })
-    }
-    .width('100%')
-    .height(50)
-    .backgroundColor(ThemeUtil.getColor('surface'))
-    .borderRadius(ThemeUtil.getBorderRadius('md'))
-    .padding({ left: ThemeUtil.getSpacing('sm'), right: ThemeUtil.getSpacing('sm') })
-    .margin({ bottom: ThemeUtil.getSpacing('lg') })
-  }
-
-  /**
-   * 构建提交按钮
-   */
-  @Builder
-  private buildSubmitButton() {
-    Button('注册')
-      .width('100%')
-      .height(48)
-      .backgroundColor(ThemeUtil.getColor('primary'))
-      .fontSize(ThemeUtil.getFontSize('md'))
-      .fontColor(ThemeUtil.getColor('onPrimary'))
-      .enabled(this.validateForm() && !this.isLoading)
-      .onClick(() => this.submitRegister())
-      .margin({ bottom: ThemeUtil.getSpacing('md') })
-
-    if (this.isLoading) {
-      LoadingProgress()
-        .width(20)
-        .height(20)
-        .color(ThemeUtil.getColor('primary'))
+        .width('100%')
+        .margin({ bottom: 4 })
+      TextInput({ placeholder: placeholder, text: value })
+        .width('100%')
+        .height(48)
+        .type(inputType)
+        .backgroundColor(ThemeUtil.getColor('surface'))
+        .borderRadius(ThemeUtil.getBorderRadius('md'))
+        .onChange((inputValue: string) => onChange(inputValue))
         .margin({ bottom: ThemeUtil.getSpacing('md') })
     }
-  }
-
-  /**
-   * 构建协议文本
-   */
-  @Builder
-  private buildAgreementText() {
-    Row() {
-      Text('注册即表示同意')
-        .fontSize(ThemeUtil.getFontSize('xs'))
-        .fontColor(ThemeUtil.getColor('textHint'))
-
-      Text('《用户协议》')
-        .fontSize(ThemeUtil.getFontSize('xs'))
-        .fontColor(ThemeUtil.getColor('primary'))
-        .onClick(() => this.goToUserAgreement())
-
-      Text('和')
-        .fontSize(ThemeUtil.getFontSize('xs'))
-        .fontColor(ThemeUtil.getColor('textHint'))
-
-      Text('《隐私政策》')
-        .fontSize(ThemeUtil.getFontSize('xs'))
-        .fontColor(ThemeUtil.getColor('primary'))
-        .onClick(() => this.goToPrivacyPolicy())
-    }
     .width('100%')
-    .justifyContent(FlexAlign.Center)
-    .margin({ bottom: ThemeUtil.getSpacing('xl') })
   }
 }

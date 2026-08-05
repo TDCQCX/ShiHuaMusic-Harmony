@@ -1,459 +1,377 @@
 /**
- * 用户编辑页面 - UserEditPage
- * 对应小程序 pages/user/edit
+ * 编辑个人资料（用户名/邮箱/手机/简介 + 头像入口 + 注销）
+ * 头像选择/上传将在阶段 2 接入 PhotoViewPicker
  */
+import { NavUtil } from '../../utils/NavUtil';
+import { ApiService } from '../../api/ApiService';
+import { GlobalDataManager } from '../../utils/GlobalDataManager';
+import { AppContext } from '../../utils/AppContext';
+import { HttpUtil } from '../../utils/HttpUtil';
+import { ThemeUtil } from '../../utils/ThemeUtil';
+import { UpdateUserInfoRequest, UserInfo } from '../../types/common';
+import { photoAccessHelper } from '@kit.MediaLibraryKit';
+import { image } from '@kit.ImageKit';
+import { fileIo as fs } from '@kit.CoreFileKit';
+import { request } from '@kit.BasicServicesKit';
+import { TabManager } from '../../utils/TabManager';
 
-import router from '@ohos.router'
-import { GlobalDataManager } from '../../utils/GlobalDataManager'
-import { HttpUtil } from '../../utils/HttpUtil'
-import { UserInfo } from '../../types/common'
-import { ThemeUtil } from '../../utils/ThemeUtil'
-
+@Entry
 @Component
-export struct UserEditPage {
-  @State userInfo: UserInfo = {
-    username: '',
-    avatarUrl: '',
-    userAvatar: '',
-    email: '',
-    phone: '',
-    introduction: ''
-  }
-  @State userForm: UserInfo = {
-    username: '',
-    avatarUrl: '',
-    userAvatar: '',
-    email: '',
-    phone: '',
-    introduction: ''
-  }
-  @State errors: Record<string, string> = {}
-  @State isLoading: boolean = false
-  @State avatarFile: string = ''
+struct UserEditPage {
+  @State username: string = '';
+  @State email: string = '';
+  @State phone: string = '';
+  @State introduction: string = '';
+  @State avatarUrl: string = '';
+  @State isLoading: boolean = false;
+  @State errorMessage: string = '';
 
-  private globalDataManager: GlobalDataManager = GlobalDataManager.getInstance()
-  private httpUtil: HttpUtil = new HttpUtil()
+  private globalData: GlobalDataManager = GlobalDataManager.getInstance();
+  private userId: number = 0;
 
-  /**
-   * 页面加载
-   */
   aboutToAppear(): void {
-    this.loadUserInfo()
+    const userInfo = this.globalData.getUserInfo();
+    if (!this.globalData.getIsLoggedIn() || !userInfo) {
+      NavUtil.back();
+      return;
+    }
+    this.userId = userInfo.userId;
+    this.username = userInfo.username;
+    this.email = userInfo.email;
+    this.phone = userInfo.phone;
+    this.introduction = userInfo.introduction;
+    this.avatarUrl = userInfo.avatarUrl || userInfo.userAvatar;
   }
 
-  /**
-   * 加载用户信息
-   */
-  private async loadUserInfo(): Promise<void> {
-    try {
-      // 检查登录状态
-      const token = this.globalDataManager.getToken()
-      if (!token) {
-        console.log('请先登录')
-        router.back()
-        return
-      }
+  private validate(): boolean {
+    const usernameRegex = /^[a-zA-Z0-9_-]{4,16}$/;
+    if (!usernameRegex.test(this.username)) {
+      this.errorMessage = '用户名格式：4-16位字符（字母、数字、下划线、连字符）';
+      return false;
+    }
+    if (this.phone && !/^1[3-9]\d{9}$/.test(this.phone)) {
+      this.errorMessage = '请输入正确的手机号格式';
+      return false;
+    }
+    this.errorMessage = '';
+    return true;
+  }
 
-      // 获取用户信息
-      const currentUserInfo = this.globalDataManager.getUserInfo()
-      if (currentUserInfo) {
-        this.userInfo = { ...currentUserInfo }
-        this.userForm = { ...currentUserInfo }
+  private async handleSave(): Promise<void> {
+    if (!this.validate()) {
+      return;
+    }
+    this.isLoading = true;
+    try {
+      const request: UpdateUserInfoRequest = {
+        userId: this.userId,
+        username: this.username,
+        phone: this.phone,
+        email: this.email,
+        introduction: this.introduction
+      };
+      const result = await ApiService.updateUserInfo(request);
+      if (result.code === 0) {
+        const userResult = await ApiService.getUserInfo();
+        if (userResult.code === 0 && userResult.data) {
+          const freshUser: UserInfo = userResult.data;
+          freshUser.token = this.globalData.getToken();
+          await this.globalData.updateUserInfo(freshUser);
+        }
+        NavUtil.back();
+      } else {
+        this.errorMessage = result.message || '更新失败';
       }
     } catch (error) {
-      console.error('加载用户信息失败:', error)
+      this.errorMessage = (error as Error).message;
+    } finally {
+      this.isLoading = false;
     }
   }
 
-  /**
-   * 选择头像
-   */
+  private handleDelete(): void {
+    this.getUIContext().showAlertDialog({
+      title: '确认注销',
+      message: '注销账号后将无法恢复，确定要继续吗？',
+      autoCancel: true,
+      alignment: DialogAlignment.Center,
+      primaryButton: {
+        value: '取消',
+        action: () => {
+        }
+      },
+      secondaryButton: {
+        value: '注销',
+        fontColor: ThemeUtil.getColor('error'),
+        action: () => {
+          this.doDelete();
+        }
+      }
+    });
+  }
+
+  private async doDelete(): Promise<void> {
+    this.isLoading = true;
+    try {
+      const result = await ApiService.deleteAccount();
+      if (result.code === 0) {
+        await this.globalData.clearLoginStatus();
+        TabManager.setTab(0);
+        NavUtil.back();
+      } else {
+        this.errorMessage = result.message || '注销失败';
+      }
+    } catch (error) {
+      this.errorMessage = (error as Error).message;
+    } finally {
+      this.isLoading = false;
+    }
+  }
+
   private async selectAvatar(): Promise<void> {
     try {
-      // TODO: 实现鸿蒙原生图片选择
-      // 使用鸿蒙的文件选择API
-      console.log('选择头像')
-      // 临时模拟选择
-      this.avatarFile = 'selected_avatar_path'
-    } catch (error) {
-      console.error('选择头像失败:', error)
-    }
-  }
-
-  /**
-   * 上传头像
-   */
-  private async uploadAvatar(filePath: string): Promise<void> {
-    this.isLoading = true
-
-    try {
-      // TODO: 实现鸿蒙原生文件上传
-      // 使用鸿蒙的网络请求API上传文件
-      console.log('上传头像:', filePath)
-      
-      // 模拟上传延迟
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      
-      // 模拟上传成功，返回新的头像URL
-      const newAvatarUrl = 'uploaded_avatar_url_' + Date.now()
-      this.userForm.avatarUrl = newAvatarUrl
-      this.userForm.userAvatar = newAvatarUrl
-      
-      console.log('头像上传成功')
-    } catch (error) {
-      console.error('头像上传失败:', error)
-    } finally {
-      this.isLoading = false
-    }
-  }
-
-  /**
-   * 表单验证
-   */
-  private validateForm(): boolean {
-    const errors: Record<string, string> = {}
-    const { username, phone } = this.userForm
-
-    // 用户名验证
-    if (!username?.trim()) {
-      errors.username = '请输入用户名'
-    } else {
-      const usernameRegex = /^[a-zA-Z0-9_-]{4,16}$/
-      if (!usernameRegex.test(username)) {
-        errors.username = '用户名格式：4-16位字符（字母、数字、下划线、连字符）'
+      const photoPicker = new photoAccessHelper.PhotoViewPicker();
+      const options = new photoAccessHelper.PhotoSelectOptions();
+      options.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE;
+      options.maxSelectNumber = 1;
+      const result = await photoPicker.select(options);
+      if (result.photoUris.length === 0) {
+        return;
       }
-    }
-
-    // 手机号验证（可选）
-    if (phone && !/^1[3-9]\d{9}$/.test(phone)) {
-      errors.phone = '请输入正确的手机号格式'
-    }
-
-    this.errors = errors
-    return Object.keys(errors).length === 0
-  }
-
-  /**
-   * 保存用户信息
-   */
-  private async saveUserInfo(): Promise<void> {
-    // 表单验证
-    if (!this.validateForm()) {
-      return
-    }
-
-    this.isLoading = true
-
-    try {
-      // 获取用户ID
-      const userId = this.globalDataManager.getUserInfo()?.userId || 
-                    this.globalDataManager.getUserInfo()?.id ||
-                    this.globalDataManager.getUserInfo()?.user_id
-
-      if (!userId) {
-        console.log('用户信息不完整，请重新登录')
-        return
+      const uri = result.photoUris[0];
+      const croppedUri = await this.cropAvatar(uri);
+      if (croppedUri) {
+        await this.uploadAvatar(croppedUri);
       }
-
-      // 准备提交数据
-      const userInfoData = {
-        ...this.userForm,
-        userId: userId,
-        id: userId,
-        user_id: userId
-      }
-      delete userInfoData.avatarUrl // 排除头像URL字段
-
-      console.log('提交的用户信息:', userInfoData)
-
-      // TODO: 调用API保存用户信息
-      // const response = await this.httpUtil.put('/user/updateUserInfo', userInfoData)
-
-      // 模拟保存延迟
-      await new Promise(resolve => setTimeout(resolve, 1500))
-
-      // 更新全局用户信息
-      this.globalDataManager.setUserInfo({
-        ...this.userForm,
-        userId: userId
-      })
-
-      console.log('用户信息保存成功')
-      router.back()
     } catch (error) {
-      console.error('保存用户信息失败:', error)
-    } finally {
-      this.isLoading = false
+      console.error('选择头像失败:', JSON.stringify(error));
     }
   }
 
   /**
-   * 输入用户名处理
+   * 居中裁剪为正方形并输出 JPEG 文件
    */
-  private onUsernameInput(value: string): void {
-    this.userForm.username = value
-    if (this.errors.username) {
-      this.errors.username = ''
-    }
-  }
-
-  /**
-   * 输入邮箱处理
-   */
-  private onEmailInput(value: string): void {
-    this.userForm.email = value
-    if (this.errors.email) {
-      this.errors.email = ''
-    }
-  }
-
-  /**
-   * 输入手机号处理
-   */
-  private onPhoneInput(value: string): void {
-    this.userForm.phone = value
-    if (this.errors.phone) {
-      this.errors.phone = ''
-    }
-  }
-
-  /**
-   * 输入简介处理
-   */
-  private onIntroductionInput(value: string): void {
-    this.userForm.introduction = value
-  }
-
-  /**
-   * 处理删除账号
-   */
-  private handleDeleteAccount(): void {
-    // TODO: 实现鸿蒙原生确认对话框
-    console.log('确认删除账号')
-  }
-
-  /**
-   * 删除账号
-   */
-  private async deleteAccount(): Promise<void> {
-    this.isLoading = true
-
+  private async cropAvatar(uri: string): Promise<string> {
     try {
-      // TODO: 调用删除账号API
-      // const response = await this.httpUtil.delete('/user/deleteUser')
+      const imageSource = image.createImageSource(uri);
+      const pixelMap = await imageSource.createPixelMap();
+      const info = pixelMap.getImageInfoSync();
+      const side = Math.min(info.size.width, info.size.height);
+      const x = Math.floor((info.size.width - side) / 2);
+      const y = Math.floor((info.size.height - side) / 2);
+      const region: image.Region = {
+        x: x,
+        y: y,
+        size: { width: side, height: side }
+      };
+      pixelMap.cropSync(region);
+      const packer = image.createImagePacker();
+      const data = await packer.packToData(pixelMap, { format: 'image/jpeg', quality: 90 });
+      pixelMap.release();
+      imageSource.release();
 
-      // 模拟删除延迟
-      await new Promise(resolve => setTimeout(resolve, 1000))
-
-      // 清除登录状态
-      this.globalDataManager.clearUserInfo()
-      this.globalDataManager.clearToken()
-
-      console.log('账号已注销')
-      router.pushUrl({ url: '/pages/Login/LoginPage' })
+      const context = AppContext.getContext();
+      if (context === null) {
+        return '';
+      }
+      const filePath = context.cacheDir + '/avatar_' + Date.now().toString() + '.jpg';
+      const file = fs.openSync(filePath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
+      fs.writeSync(file.fd, data);
+      fs.closeSync(file);
+      return 'file://' + filePath;
     } catch (error) {
-      console.error('删除账号失败:', error)
-    } finally {
-      this.isLoading = false
+      console.error('裁剪头像失败:', JSON.stringify(error));
+      return '';
     }
+  }
+
+  /**
+   * 上传头像并重新拉取用户信息
+   */
+  private async uploadAvatar(fileUri: string): Promise<void> {
+    this.isLoading = true;
+    try {
+      const context = AppContext.getContext();
+      if (context === null) {
+        this.isLoading = false;
+        return;
+      }
+      const token = this.globalData.getToken();
+      const headers: Record<string, string> = {
+        'Authorization': token ? 'Bearer ' + token : ''
+      };
+      const config: request.UploadConfig = {
+        url: HttpUtil.getBaseUrl() + '/user/updateUserAvatar',
+        header: headers,
+        method: 'POST',
+        files: [
+          {
+            filename: 'avatar.jpg',
+            name: 'avatar',
+            uri: fileUri,
+            type: 'image/jpeg'
+          }
+        ],
+        data: []
+      };
+      const task = await request.uploadFile(context, config);
+      task.on('complete', (taskInfo: request.TaskState[]) => {
+        this.refreshAvatar();
+      });
+      task.on('fail', (taskInfo: request.TaskState[]) => {
+        console.error('头像上传失败');
+        this.isLoading = false;
+      });
+    } catch (error) {
+      console.error('头像上传异常:', JSON.stringify(error));
+      this.isLoading = false;
+    }
+  }
+
+  private async refreshAvatar(): Promise<void> {
+    try {
+      const result = await ApiService.getUserInfo();
+      if (result.code === 0 && result.data) {
+        const fresh: UserInfo = result.data;
+        fresh.token = this.globalData.getToken();
+        await this.globalData.updateUserInfo(fresh);
+        this.avatarUrl = fresh.avatarUrl || fresh.userAvatar;
+      }
+    } catch (error) {
+      console.error('刷新头像信息失败:', JSON.stringify(error));
+    } finally {
+      this.isLoading = false;
+    }
+  }
+
+  pageTransition() {
+    PageTransitionEnter({ duration: 260, curve: Curve.EaseOut })
+      .opacity(0)
+      .translate({ y: 24 })
+    PageTransitionExit({ duration: 200, curve: Curve.EaseIn })
+      .opacity(0)
   }
 
   build() {
     Column() {
-      // 顶部导航栏
-      this.buildHeader()
+      Row() {
+        Image($r('app.media.back'))
+          .width(24)
+          .height(24)
+          .onClick(() => NavUtil.back())
+        Blank()
+        Text('编辑个人信息')
+          .fontSize(ThemeUtil.getFontSize('lg'))
+          .fontWeight(FontWeight.Bold)
+          .fontColor(ThemeUtil.getColor('textPrimary'))
+        Blank()
+        Text('保存')
+          .fontSize(ThemeUtil.getFontSize('sm'))
+          .fontColor(this.username ? ThemeUtil.getColor('primary') : ThemeUtil.getColor('textHint'))
+          .onClick(() => this.handleSave())
+      }
+      .width('100%')
+      .height(56)
+      .padding({ left: ThemeUtil.getSpacing('md'), right: ThemeUtil.getSpacing('md') })
+      .backgroundColor(ThemeUtil.getColor('surface'))
 
       Scroll() {
         Column() {
-          // 用户信息表单
-          this.buildUserForm()
+          Column() {
+            Image(this.avatarUrl ? this.avatarUrl : $r('app.media.default_avatar'))
+              .width(80)
+              .height(80)
+              .borderRadius(ThemeUtil.getBorderRadius('full'))
+              .objectFit(ImageFit.Cover)
+              .backgroundColor(ThemeUtil.getColor('surface'))
+            Text('点击更换头像')
+              .fontSize(ThemeUtil.getFontSize('xs'))
+              .fontColor(ThemeUtil.getColor('primary'))
+              .margin({ top: ThemeUtil.getSpacing('sm') })
+          }
+          .width('100%')
+          .height(140)
+          .justifyContent(FlexAlign.Center)
+          .backgroundColor(ThemeUtil.getColor('surface'))
+          .onClick(() => this.selectAvatar())
 
-          // 删除账号按钮
-          this.buildDeleteButton()
+          Column() {
+            this.buildInput('用户名', this.username, '请输入用户名', InputType.Normal, (value: string) => {
+              this.username = value;
+            })
+            this.buildInput('邮箱', this.email, '请输入邮箱', InputType.Email, (value: string) => {
+              this.email = value;
+            })
+            this.buildInput('手机号', this.phone, '请输入手机号', InputType.PhoneNumber, (value: string) => {
+              this.phone = value;
+            })
+            this.buildInput('个人简介', this.introduction, '请输入个人简介', InputType.Normal, (value: string) => {
+              this.introduction = value;
+            })
+
+            if (this.errorMessage.length > 0) {
+              Text(this.errorMessage)
+                .fontSize(ThemeUtil.getFontSize('xs'))
+                .fontColor(ThemeUtil.getColor('error'))
+                .margin({ top: ThemeUtil.getSpacing('sm') })
+            }
+          }
+          .width('100%')
+          .backgroundColor(ThemeUtil.getColor('surface'))
+          .padding(ThemeUtil.getSpacing('lg'))
+          .margin({ top: ThemeUtil.getSpacing('sm') })
+
+          Button(this.isLoading ? '保存中...' : '保存修改')
+            .width('90%')
+            .height(48)
+            .fontSize(ThemeUtil.getFontSize('md'))
+            .fontColor(ThemeUtil.getColor('onPrimary'))
+            .backgroundColor(ThemeUtil.getColor('primary'))
+            .borderRadius(ThemeUtil.getBorderRadius('lg'))
+            .enabled(!this.isLoading)
+            .onClick(() => this.handleSave())
+            .margin({ top: ThemeUtil.getSpacing('lg') })
+
+          Button('删除账号')
+            .width('90%')
+            .height(44)
+            .fontSize(ThemeUtil.getFontSize('sm'))
+            .fontColor(ThemeUtil.getColor('error'))
+            .backgroundColor(Color.Transparent)
+            .borderWidth(1)
+            .borderColor(ThemeUtil.getColor('error'))
+            .borderRadius(ThemeUtil.getBorderRadius('md'))
+            .enabled(!this.isLoading)
+            .onClick(() => this.handleDelete())
+            .margin({ top: ThemeUtil.getSpacing('lg'), bottom: ThemeUtil.getSpacing('xl') })
         }
         .width('100%')
       }
       .layoutWeight(1)
+      .scrollBar(BarState.Off)
     }
     .width('100%')
     .height('100%')
     .backgroundColor(ThemeUtil.getColor('background'))
   }
 
-  /**
-   * 构建头部
-   */
   @Builder
-  private buildHeader() {
-    Row() {
-      Image($r('app.media.back'))
-        .width(24)
-        .height(24)
-        .onClick(() => router.back())
-
-      Blank()
-
-      Text('编辑个人信息')
-        .fontSize(ThemeUtil.getFontSize('xl'))
-        .fontColor(ThemeUtil.getColor('textPrimary'))
-        .fontWeight(FontWeight.Bold)
-
-      Blank()
-
-      Text('保存')
-        .fontSize(ThemeUtil.getFontSize('sm'))
-        .fontColor(this.userForm.username.trim() ? ThemeUtil.getColor('primary') : ThemeUtil.getColor('textHint'))
-        .onClick(() => {
-          if (this.userForm.username.trim()) {
-            this.saveUserInfo()
-          }
-        })
-    }
-    .width('100%')
-    .height(56)
-    .padding({ left: ThemeUtil.getSpacing('md'), right: ThemeUtil.getSpacing('md') })
-    .backgroundColor(ThemeUtil.getColor('surface'))
-  }
-
-  /**
-   * 构建用户表单
-   */
-  @Builder
-  private buildUserForm() {
-    Column() {
-      // 头像区域
-      this.buildAvatarSection()
-
-      // 输入表单
-      this.buildInputForm()
-
-      // 保存按钮
-      Button(this.isLoading ? '保存中...' : '保存修改')
-        .width('90%')
-        .height(48)
-        .fontSize(ThemeUtil.getFontSize('md'))
-        .fontColor(ThemeUtil.getColor('onPrimary'))
-        .backgroundColor(ThemeUtil.getColor('primary'))
-        .borderRadius(ThemeUtil.getBorderRadius('xl'))
-        .enabled(!this.isLoading && !!this.userForm.username.trim())
-        .onClick(() => this.saveUserInfo())
-        .margin({ top: ThemeUtil.getSpacing('lg') })
-    }
-    .width('100%')
-    .margin({ top: ThemeUtil.getSpacing('sm') })
-  }
-
-  /**
-   * 构建头像区域
-   */
-  @Builder
-  private buildAvatarSection() {
-    Column() {
-      Column() {
-        Image(this.userForm.userAvatar || this.userForm.avatarUrl || $r('app.media.default-avatar'))
-          .width(80)
-          .height(80)
-          .borderRadius(ThemeUtil.getBorderRadius('full'))
-          .backgroundColor(ThemeUtil.getColor('divider'))
-      }
-      .width(100)
-      .height(100)
-      .margin({ bottom: ThemeUtil.getSpacing('md') })
-      .onClick(() => this.selectAvatar())
-
-      Text('点击更换头像')
-        .fontSize(ThemeUtil.getFontSize('xs'))
-        .fontColor(ThemeUtil.getColor('primary'))
-    }
-    .width('100%')
-    .height(140)
-    .justifyContent(FlexAlign.Center)
-    .backgroundColor(ThemeUtil.getColor('surface'))
-    .margin({ bottom: ThemeUtil.getSpacing('sm') })
-  }
-
-  /**
-   * 构建输入表单
-   */
-  @Builder
-  private buildInputForm() {
-    Column({ space: ThemeUtil.getSpacing('lg') }) {
-      // 用户名
-      this.buildInputItem('用户名', this.userForm.username, '请输入用户名', (value) => this.onUsernameInput(value), InputType.Normal, this.errors.username)
-
-      // 邮箱
-      this.buildInputItem('邮箱', this.userForm.email, '请输入邮箱地址', (value) => this.onEmailInput(value), InputType.EmailAddr, '')
-
-      // 手机号
-      this.buildInputItem('手机号', this.userForm.phone, '请输入手机号', (value) => this.onPhoneInput(value), InputType.PhoneNumber, this.errors.phone)
-
-      // 简介
-      this.buildInputItem('个人简介', this.userForm.introduction || '', '请输入个人简介', (value) => this.onIntroductionInput(value), InputType.Normal, '')
-    }
-    .width('100%')
-    .backgroundColor(ThemeUtil.getColor('surface'))
-    .padding(ThemeUtil.getSpacing('lg'))
-  }
-
-  /**
-   * 构建输入项
-   */
-  @Builder
-  private buildInputItem(label: string, value: string, placeholder: string, onChange: (value: string) => void, inputType?: InputType, error?: string) {
+  private buildInput(label: string, value: string, placeholder: string, inputType: InputType, onChange: (value: string) => void) {
     Column() {
       Text(label)
         .fontSize(ThemeUtil.getFontSize('sm'))
         .fontColor(ThemeUtil.getColor('textPrimary'))
+        .width('100%')
         .margin({ bottom: ThemeUtil.getSpacing('sm') })
-
-      TextInput({
-        placeholder: placeholder,
-        text: value
-      })
+      TextInput({ placeholder: placeholder, text: value })
         .width('100%')
         .height(48)
-        .backgroundColor(ThemeUtil.getColor('surface'))
-        .fontSize(ThemeUtil.getFontSize('md'))
-        .fontColor(ThemeUtil.getColor('textPrimary'))
-        .type(inputType || InputType.Normal)
+        .type(inputType)
+        .backgroundColor(ThemeUtil.getColor('background'))
+        .borderRadius(ThemeUtil.getBorderRadius('sm'))
         .onChange((inputValue: string) => onChange(inputValue))
-
-      // 错误提示
-      if (error) {
-        Text(error)
-          .fontSize(ThemeUtil.getFontSize('xs'))
-          .fontColor(ThemeUtil.getColor('error'))
-          .margin({ top: ThemeUtil.getSpacing('xs') })
-      }
+        .margin({ bottom: ThemeUtil.getSpacing('lg') })
     }
     .width('100%')
-  }
-
-  /**
-   * 构建删除账号按钮
-   */
-  @Builder
-  private buildDeleteButton() {
-    Column() {
-      Button('删除账号')
-        .width('90%')
-        .height(44)
-        .fontSize(ThemeUtil.getFontSize('sm'))
-        .fontColor(ThemeUtil.getColor('error'))
-        .backgroundColor(Color.Transparent)
-        .borderWidth(1)
-        .borderColor(ThemeUtil.getColor('error'))
-        .borderRadius(ThemeUtil.getBorderRadius('md'))
-        .enabled(!this.isLoading)
-        .onClick(() => this.handleDeleteAccount())
-        .margin({ top: ThemeUtil.getSpacing('lg') })
-
-      Text('删除账号后无法恢复，确定要继续吗？')
-        .fontSize(ThemeUtil.getFontSize('xs'))
-        .fontColor(ThemeUtil.getColor('textHint'))
-        .margin({ top: ThemeUtil.getSpacing('sm') })
-    }
-    .width('100%')
-    .margin({ bottom: ThemeUtil.getSpacing('xl') })
   }
 }

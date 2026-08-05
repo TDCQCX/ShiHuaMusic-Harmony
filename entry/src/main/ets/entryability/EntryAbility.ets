@@ -1,95 +1,69 @@
-import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
+import { AbilityConstant, Configuration, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
-import { RouteConfig } from '../types/common';
+import { ThemeUtil } from '../utils/ThemeUtil';
+import { GlobalDataManager } from '../utils/GlobalDataManager';
+import { AppContext } from '../utils/AppContext';
+import { AudioManager } from '../utils/AudioManager';
 
-const DOMAIN = 0x0000;
-
-const routes: RouteConfig[] = [
-       { name: 'Index', page: 'pages/Index/IndexPage' },
-       { name: 'User', page: 'pages/User/UserPage' },
-       { name: 'Library', page: 'pages/Library/LibraryPage' }
-     ];
+const DOMAIN: number = 0x0000;
+const TAG: string = 'ShiHuaMusic';
 
 export default class EntryAbility extends UIAbility {
-  private currentRoute: string = 'Index';
-
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
+    AppContext.init(this.context);
     try {
       this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
     } catch (err) {
-      hilog.error(DOMAIN, 'testTag', 'Failed to set colorMode. Cause: %{public}s', JSON.stringify(err));
+      hilog.error(DOMAIN, TAG, 'Failed to set colorMode: %{public}s', JSON.stringify(err));
     }
-    hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onCreate');
+    GlobalDataManager.getInstance().initialize();
+    AudioManager.getInstance().restore();
+    hilog.info(DOMAIN, TAG, 'Ability onCreate');
+  }
+
+  onConfigurationUpdate(newConfig: Configuration): void {
+    const isDark: boolean = newConfig.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+    ThemeUtil.setSystemDark(isDark);
+    hilog.info(DOMAIN, TAG, 'Configuration updated, darkMode: %{public}s', isDark.toString());
   }
 
   onDestroy(): void {
-    hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onDestroy');
+    hilog.info(DOMAIN, TAG, 'Ability onDestroy');
   }
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
-    // Main window is created, set main page for this ability
-    hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageCreate');
-
-    this.loadPage(windowStage, 'Index');
-  }
-
-  onWindowStageDestroy(): void {
-    // Main window is destroyed, release UI related resources
-    hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageDestroy');
-  }
-
-  onForeground(): void {
-    // Ability has brought to foreground
-    hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onForeground');
-  }
-
-  onBackground(): void {
-    // Ability has back to background
-    hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onBackground');
+    this.initApp(windowStage);
   }
 
   /**
-   * 页面导航
+   * 先完成本地配置/会话恢复，再加载首页，避免首次进入数据为空
    */
-  navigateTo(routeName: string): void {
-    this.currentRoute = routeName;
-    const route = routes.find(r => r.name === routeName);
-    if (route) {
-      const windowStage = this.context.getWindowStage();
-      if (windowStage) {
-        this.loadPage(windowStage, routeName);
-      }
-    } else {
-      hilog.error(DOMAIN, 'testTag', 'Route not found: %{public}s', routeName);
+  private async initApp(windowStage: window.WindowStage): Promise<void> {
+    try {
+      await GlobalDataManager.getInstance().initialize();
+      await AudioManager.getInstance().restore();
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, 'App init failed: %{public}s', JSON.stringify(error));
     }
-  }
-
-  /**
-   * 加载页面
-   */
-  private loadPage(windowStage: window.WindowStage, routeName: string): void {
-    const route = routes.find(r => r.name === routeName);
-    if (!route) {
-      hilog.error(DOMAIN, 'testTag', 'Invalid route: %{public}s', routeName);
-      return;
-    }
-
-    hilog.info(DOMAIN, 'testTag', 'Loading page: %{public}s', route.page);
-    
-    windowStage.loadContent(route.page, (err) => {
+    windowStage.loadContent('pages/MainTabs/MainTabs', (err) => {
       if (err.code) {
-        hilog.error(DOMAIN, 'testTag', 'Failed to load page %{public}s. Cause: %{public}s', routeName, JSON.stringify(err));
+        hilog.error(DOMAIN, TAG, 'Failed to load content: %{public}s', JSON.stringify(err));
         return;
       }
-      hilog.info(DOMAIN, 'testTag', 'Succeeded in loading page: %{public}s', routeName);
+      hilog.info(DOMAIN, TAG, 'Succeeded in loading content.');
     });
   }
 
-  /**
-   * 获取当前路由
-   */
-  getCurrentRoute(): string {
-    return this.currentRoute;
+  onWindowStageDestroy(): void {
+    hilog.info(DOMAIN, TAG, 'Ability onWindowStageDestroy');
+  }
+
+  onForeground(): void {
+    hilog.info(DOMAIN, TAG, 'Ability onForeground');
+  }
+
+  onBackground(): void {
+    hilog.info(DOMAIN, TAG, 'Ability onBackground');
   }
 }

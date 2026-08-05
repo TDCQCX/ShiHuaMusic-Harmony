@@ -1,6 +1,8 @@
-// 主题管理工具类
+/**
+ * 主题管理工具（浅色/深色/自动 + 可配置主题色，ArkTS 规范）
+ */
 import display from '@ohos.display';
-import PreferencesUtil from './PreferencesUtil';
+import { StorageUtil } from './StorageUtil';
 
 export enum ThemeType {
   LIGHT = 'light',
@@ -11,72 +13,71 @@ export enum ThemeType {
 export interface ThemeColors {
   primary: string;
   primaryVariant: string;
-  secondary: string;
   background: string;
   surface: string;
-  error: string;
-  onPrimary: string;
-  onSecondary: string;
-  onBackground: string;
-  onSurface: string;
   textPrimary: string;
   textSecondary: string;
   textHint: string;
   divider: string;
-  shadow: string;
   overlay: string;
+  onPrimary: string;
+  error: string;
+}
+
+export interface SpacingConfig {
+  xs: number;
+  sm: number;
+  md: number;
+  lg: number;
+  xl: number;
+}
+
+export interface BorderRadiusConfig {
+  sm: number;
+  md: number;
+  lg: number;
+  xl: number;
+  full: number;
+}
+
+export interface FontSizeConfig {
+  xs: number;
+  sm: number;
+  md: number;
+  lg: number;
+  xl: number;
+  xxl: number;
 }
 
 export interface ThemeConfig {
   name: string;
   colors: ThemeColors;
-  spacing: {
-    xs: number;
-    sm: number;
-    md: number;
-    lg: number;
-    xl: number;
-  };
-  borderRadius: {
-    sm: number;
-    md: number;
-    lg: number;
-    full: number;
-  };
-  fontSize: {
-    xs: number;
-    sm: number;
-    md: number;
-    lg: number;
-    xl: number;
-    xxl: number;
-  };
+  spacing: SpacingConfig;
+  borderRadius: BorderRadiusConfig;
+  fontSize: FontSizeConfig;
 }
 
 export class ThemeUtil {
   private static currentTheme: ThemeType = ThemeType.AUTO;
+  private static customPrimary: string = '#7E22CE';
+  private static systemDark: boolean = false;
+  private static initialized: boolean = false;
   private static listeners: ((theme: ThemeType) => void)[] = [];
 
-  // 浅色主题配置
-  static readonly LIGHT_THEME: ThemeConfig = {
+  static readonly LIGHT: ThemeConfig = {
     name: 'light',
     colors: {
-      primary: '#1976D2',
-      primaryVariant: '#1565C0',
-      secondary: '#03DAC6',
-      background: '#FAFAFA',
+      primary: '#7E22CE',
+      primaryVariant: '#6B21A8',
+      background: '#F5F5F5',
       surface: '#FFFFFF',
-      error: '#B00020',
-      onPrimary: '#FFFFFF',
-      onSecondary: '#000000',
-      onBackground: '#000000',
-      onSurface: '#000000',
       textPrimary: '#212121',
       textSecondary: '#757575',
       textHint: '#BDBDBD',
-      divider: '#E0E0E0',
-      shadow: 'rgba(0, 0, 0, 0.12)',
-      overlay: 'rgba(0, 0, 0, 0.5)'
+      divider: '#E5E5E5',
+      overlay: 'rgba(0, 0, 0, 0.45)',
+      onPrimary: '#FFFFFF',
+      error: '#D32F2F'
     },
     spacing: {
       xs: 4,
@@ -86,10 +87,11 @@ export class ThemeUtil {
       xl: 32
     },
     borderRadius: {
-      sm: 4,
-      md: 8,
+      sm: 8,
+      md: 12,
       lg: 16,
-      full: 50
+      xl: 24,
+      full: 999
     },
     fontSize: {
       xs: 12,
@@ -101,26 +103,20 @@ export class ThemeUtil {
     }
   };
 
-  // 深色主题配置
-  static readonly DARK_THEME: ThemeConfig = {
+  static readonly DARK: ThemeConfig = {
     name: 'dark',
     colors: {
-      primary: '#90CAF9',
-      primaryVariant: '#64B5F6',
-      secondary: '#03DAC6',
+      primary: '#A855F7',
+      primaryVariant: '#9333EA',
       background: '#121212',
       surface: '#1E1E1E',
-      error: '#CF6679',
-      onPrimary: '#000000',
-      onSecondary: '#000000',
-      onBackground: '#FFFFFF',
-      onSurface: '#FFFFFF',
       textPrimary: '#FFFFFF',
       textSecondary: '#B3B3B3',
       textHint: '#666666',
       divider: '#333333',
-      shadow: 'rgba(255, 255, 255, 0.12)',
-      overlay: 'rgba(255, 255, 255, 0.1)'
+      overlay: 'rgba(0, 0, 0, 0.65)',
+      onPrimary: '#FFFFFF',
+      error: '#EF5350'
     },
     spacing: {
       xs: 4,
@@ -130,10 +126,11 @@ export class ThemeUtil {
       xl: 32
     },
     borderRadius: {
-      sm: 4,
-      md: 8,
+      sm: 8,
+      md: 12,
       lg: 16,
-      full: 50
+      xl: 24,
+      full: 999
     },
     fontSize: {
       xs: 12,
@@ -145,106 +142,195 @@ export class ThemeUtil {
     }
   };
 
-  /**
-   * 初始化主题系统
-   */
   static async init(): Promise<void> {
-    try {
-      // 从本地存储读取主题设置
-      const savedTheme = await PreferencesUtil.getString('theme_type', ThemeType.AUTO);
-      ThemeUtil.currentTheme = savedTheme as ThemeType;
-      
-      // 根据系统设置调整主题
-      if (ThemeUtil.currentTheme === ThemeType.AUTO) {
-        await ThemeUtil.updateAutoTheme();
-      }
-      
-      console.log('主题系统初始化完成，当前主题:', ThemeUtil.currentTheme);
-    } catch (error) {
-      console.error('主题系统初始化失败:', error);
-      ThemeUtil.currentTheme = ThemeType.LIGHT;
+    if (ThemeUtil.initialized) {
+      return;
     }
+    ThemeUtil.initialized = true;
+    const savedTheme = await StorageUtil.getString('theme_type', ThemeType.AUTO);
+    ThemeUtil.currentTheme = savedTheme as ThemeType;
+    const savedPrimary = await StorageUtil.getString('theme_primary', '#7E22CE');
+    ThemeUtil.customPrimary = savedPrimary;
+    const savedDark = await StorageUtil.getBoolean('system_dark', false);
+    ThemeUtil.systemDark = savedDark;
   }
 
   /**
-   * 设置主题
-   * @param theme 主题类型
+   * 由 Ability 配置回调更新系统深色状态
    */
-  static async setTheme(theme: ThemeType): Promise<void> {
-    try {
-      ThemeUtil.currentTheme = theme;
-      await PreferencesUtil.putString('theme_type', theme);
-      
-      // 如果设置为自动主题，需要根据系统设置更新
-      if (theme === ThemeType.AUTO) {
-        await ThemeUtil.updateAutoTheme();
-      }
-      
-      // 通知所有监听器
-      ThemeUtil.notifyListeners();
-      
-      console.log('主题已切换为:', theme);
-    } catch (error) {
-      console.error('设置主题失败:', error);
-    }
+  static setSystemDark(isDark: boolean): void {
+    ThemeUtil.systemDark = isDark;
+    StorageUtil.putBoolean('system_dark', isDark);
   }
 
-  /**
-   * 获取当前主题类型
-   */
   static getCurrentTheme(): ThemeType {
     return ThemeUtil.currentTheme;
   }
 
-  /**
-   * 获取当前主题配置
-   */
+  static async setTheme(theme: ThemeType): Promise<void> {
+    ThemeUtil.currentTheme = theme;
+    await StorageUtil.putString('theme_type', theme);
+    ThemeUtil.notifyListeners();
+    ThemeUtil.bumpVersion();
+  }
+
   static getCurrentThemeConfig(): ThemeConfig {
-    if (ThemeUtil.currentTheme === ThemeType.AUTO) {
-      // 根据系统主题返回对应配置
-      return ThemeUtil.isDarkMode() ? ThemeUtil.DARK_THEME : ThemeUtil.LIGHT_THEME;
+    if (ThemeUtil.currentTheme === ThemeType.DARK ||
+      (ThemeUtil.currentTheme === ThemeType.AUTO && ThemeUtil.isDarkMode())) {
+      return ThemeUtil.DARK;
     }
-    return ThemeUtil.currentTheme === ThemeType.DARK ? ThemeUtil.DARK_THEME : ThemeUtil.LIGHT_THEME;
+    return ThemeUtil.LIGHT;
+  }
+
+  static async setPrimary(color: string): Promise<void> {
+    ThemeUtil.customPrimary = color;
+    await StorageUtil.putString('theme_primary', color);
+    ThemeUtil.bumpVersion();
+    ThemeUtil.notifyListeners();
   }
 
   /**
-   * 获取主题颜色
+   * 通知全局主题版本变化，触发订阅组件重建
    */
-  static getColor(colorName: keyof ThemeColors): string {
-    return ThemeUtil.getCurrentThemeConfig().colors[colorName];
+  private static bumpVersion(): void {
+    const current = AppStorage.get<number>('themeVersion');
+    AppStorage.setOrCreate('themeVersion', (current ?? 0) + 1);
   }
 
-  /**
-   * 获取间距
-   */
-  static getSpacing(size: keyof ThemeConfig['spacing']): number {
-    return ThemeUtil.getCurrentThemeConfig().spacing[size];
+  static getPrimary(): string {
+    return ThemeUtil.customPrimary;
   }
 
-  /**
-   * 获取圆角
-   */
-  static getBorderRadius(size: keyof ThemeConfig['borderRadius']): number {
-    return ThemeUtil.getCurrentThemeConfig().borderRadius[size];
+  static isDarkMode(): boolean {
+    return ThemeUtil.systemDark;
   }
 
-  /**
-   * 获取字体大小
-   */
-  static getFontSize(size: keyof ThemeConfig['fontSize']): number {
-    return ThemeUtil.getCurrentThemeConfig().fontSize[size];
+  static getColor(colorName: string): string {
+    const config = ThemeUtil.getCurrentThemeConfig();
+    const colors = config.colors;
+    let result: string = colors.primary;
+    switch (colorName) {
+      case 'primary':
+        result = ThemeUtil.customPrimary;
+        break;
+      case 'primaryVariant':
+        result = colors.primaryVariant;
+        break;
+      case 'background':
+        result = colors.background;
+        break;
+      case 'surface':
+        result = colors.surface;
+        break;
+      case 'textPrimary':
+        result = colors.textPrimary;
+        break;
+      case 'textSecondary':
+        result = colors.textSecondary;
+        break;
+      case 'textHint':
+        result = colors.textHint;
+        break;
+      case 'divider':
+        result = colors.divider;
+        break;
+      case 'overlay':
+        result = colors.overlay;
+        break;
+      case 'onPrimary':
+        result = colors.onPrimary;
+        break;
+      case 'error':
+        result = colors.error;
+        break;
+      default:
+        break;
+    }
+    return result;
   }
 
-  /**
-   * 添加主题变更监听器
-   */
+  static getSpacing(size: string): number {
+    const spacing = ThemeUtil.getCurrentThemeConfig().spacing;
+    let result: number = spacing.md;
+    switch (size) {
+      case 'xs':
+        result = spacing.xs;
+        break;
+      case 'sm':
+        result = spacing.sm;
+        break;
+      case 'md':
+        result = spacing.md;
+        break;
+      case 'lg':
+        result = spacing.lg;
+        break;
+      case 'xl':
+        result = spacing.xl;
+        break;
+      default:
+        break;
+    }
+    return result;
+  }
+
+  static getBorderRadius(size: string): number {
+    const borderRadius = ThemeUtil.getCurrentThemeConfig().borderRadius;
+    let result: number = borderRadius.md;
+    switch (size) {
+      case 'sm':
+        result = borderRadius.sm;
+        break;
+      case 'md':
+        result = borderRadius.md;
+        break;
+      case 'lg':
+        result = borderRadius.lg;
+        break;
+      case 'xl':
+        result = borderRadius.xl;
+        break;
+      case 'full':
+        result = borderRadius.full;
+        break;
+      default:
+        break;
+    }
+    return result;
+  }
+
+  static getFontSize(size: string): number {
+    const fontSize = ThemeUtil.getCurrentThemeConfig().fontSize;
+    let result: number = fontSize.md;
+    switch (size) {
+      case 'xs':
+        result = fontSize.xs;
+        break;
+      case 'sm':
+        result = fontSize.sm;
+        break;
+      case 'md':
+        result = fontSize.md;
+        break;
+      case 'lg':
+        result = fontSize.lg;
+        break;
+      case 'xl':
+        result = fontSize.xl;
+        break;
+      case 'xxl':
+        result = fontSize.xxl;
+        break;
+      default:
+        break;
+    }
+    return result;
+  }
+
   static addThemeChangeListener(listener: (theme: ThemeType) => void): void {
     ThemeUtil.listeners.push(listener);
   }
 
-  /**
-   * 移除主题变更监听器
-   */
   static removeThemeChangeListener(listener: (theme: ThemeType) => void): void {
     const index = ThemeUtil.listeners.indexOf(listener);
     if (index > -1) {
@@ -252,45 +338,9 @@ export class ThemeUtil {
     }
   }
 
-  /**
-   * 检查是否为深色模式
-   */
-  static isDarkMode(): boolean {
-    try {
-      // 鸿蒙系统深色模式检测
-      const colorMode = display.getDarkMode();
-      return colorMode === display.DarkMode.DARK;
-    } catch (error) {
-      console.warn('无法检测系统深色模式:', error);
-      return false;
-    }
-  }
-
-  /**
-   * 更新自动主题
-   */
-  private static async updateAutoTheme(): Promise<void> {
-    const isDark = ThemeUtil.isDarkMode();
-    console.log('系统主题检测结果:', isDark ? '深色' : '浅色');
-  }
-
-  /**
-   * 通知所有监听器
-   */
   private static notifyListeners(): void {
-    ThemeUtil.listeners.forEach(listener => {
-      try {
-        listener(ThemeUtil.currentTheme);
-      } catch (error) {
-        console.error('主题监听器执行失败:', error);
-      }
+    ThemeUtil.listeners.forEach((listener: (theme: ThemeType) => void) => {
+      listener(ThemeUtil.currentTheme);
     });
-  }
-
-  /**
-   * 销毁主题系统
-   */
-  static destroy(): void {
-    ThemeUtil.listeners = [];
   }
 }

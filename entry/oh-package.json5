@@ -1,20 +1,9 @@
 {
   "name": "entry",
   "version": "1.0.0",
-  "description": "花卉音乐 - 鸿蒙版音乐应用",
+  "description": "ShiHua音乐 - 鸿蒙版音乐应用",
   "main": "",
-  "author": "花卉团队",
+  "author": "ShiHua团队",
   "license": "MIT",
-  "dependencies": {
-    "@ohos.media": "^10.0.0",
-    "@ohos.net.http": "^10.0.0",
-    "@ohos.net.connection": "^10.0.0",
-    "@ohos.display": "^10.0.0",
-    "@ohos.promptAction": "^10.0.0",
-    "@ohos.data.preferences": "^10.0.0",
-    "@kit.AbilityKit": "^10.0.0",
-    "@kit.PerformanceAnalysisKit": "^10.0.0",
-    "@kit.ArkUI": "^10.0.0"
-  }
+  "dependencies": {}
 }
-

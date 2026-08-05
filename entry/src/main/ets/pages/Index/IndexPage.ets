@@ -1,256 +1,163 @@
-// 首页 - 移植自微信小程序pages/index/index.js
-import App from '../../ets/Application';
-import { HttpUtil } from '../../utils/HttpUtil';
-import { GlobalDataManager } from '../../utils/GlobalDataManager';
-import { SongInfo, PlaylistInfo, BannerInfo, SongListItem } from '../../types/common';
+/**
+ * 发现首页（Banner / 推荐歌单两行三列横向滑动 / 猜你喜欢）
+ */
+import { NavUtil } from '../../utils/NavUtil';
+import { ApiService } from '../../api/ApiService';
 import { AudioManager } from '../../utils/AudioManager';
-import { BottomPlayer } from '../../components/BottomPlayer';
-import { BottomNavigation } from '../../components/BottomNavigation';
-import { router } from '@kit.ArkUI';
-import { ThemeUtil, ThemeType } from '../../utils/ThemeUtil';
-import { StyleUtil } from '../../utils/StyleUtil';
+import { GlobalDataManager } from '../../utils/GlobalDataManager';
+import { ThemeUtil } from '../../utils/ThemeUtil';
+import { Banner, RecommendedPlaylist, Song, TrackModel } from '../../types/common';
+import { SongRow } from '../../components/SongRow';
+import { LoadingView } from '../../components/common/LoadingView';
+import { TabManager } from '../../utils/TabManager';
+import { ThemeType } from '../../utils/ThemeUtil';
 
-@Entry
 @Component
-struct IndexPage {
-  @State private banners: BannerInfo[] = [];
-  @State private recommendedPlaylists: PlaylistInfo[] = [];
-  @State private recommendedSongs: SongListItem[] = [];
-  @State private isLoading: boolean = false;
-  @State private showWelcomeModal: boolean = false;
-  @State private currentSwiperIndex: number = 0;
+export struct IndexPage {
+  @StorageLink('themeVersion') themeVersion: number = 0;
+  @State banners: Banner[] = [];
+  @State recommendedPlaylists: RecommendedPlaylist[] = [];
+  @State recommendedSongs: Song[] = [];
+  @State isLoading: boolean = true;
+  @State refreshing: boolean = false;
+  @State themeRefresh: number = 0;
 
-  private globalDataManager: GlobalDataManager = GlobalDataManager.getInstance();
+  private globalData: GlobalDataManager = GlobalDataManager.getInstance();
+  private audioManager: AudioManager = AudioManager.getInstance();
+  private themeListener: (theme: ThemeType) => void = (theme: ThemeType) => {
+    this.themeRefresh++;
+  };
 
-  /**
-   * 页面即将显示
-   */
   aboutToAppear(): void {
-    StyleUtil.init();
-    this.initializePage();
+    this.loadHomeData();
+    ThemeUtil.addThemeChangeListener(this.themeListener);
   }
 
-  /**
-   * 初始化页面
-   */
-  private async initializePage(): Promise<void> {
-    // 检查是否需要显示欢迎弹窗
-    this.showWelcomeModal = this.globalDataManager.getShowWelcomeModal();
-    
-    // 加载首页数据
-    await this.loadHomePageData();
+  aboutToDisappear(): void {
+    ThemeUtil.removeThemeChangeListener(this.themeListener);
   }
 
-  /**
-   * 加载首页数据
-   */
-  private async loadHomePageData(): Promise<void> {
-    this.isLoading = true;
+  private async loadHomeData(): Promise<void> {
     try {
-      // 并行加载所有数据
-      const [bannersResult, playlistsResult, songsResult] = await Promise.all([
-        this.loadBanners(),
-        this.loadRecommendedPlaylists(),
-        this.loadRecommendedSongs()
-      ]);
-
-      this.banners = bannersResult;
-      this.recommendedPlaylists = playlistsResult;
-      this.recommendedSongs = songsResult;
-
+      const bannerResult = await ApiService.getBanner();
+      if (bannerResult.code === 0 && bannerResult.data) {
+        this.banners = bannerResult.data;
+      }
+      const playlistResult = await ApiService.getRecommendedPlaylists();
+      if (playlistResult.code === 0 && playlistResult.data) {
+        // 推荐歌单：仅保留两行三列共 6 个
+        this.recommendedPlaylists = playlistResult.data.slice(0, 6);
+      }
+      const songResult = await ApiService.getRecommendedSongs();
+      if (songResult.code === 0 && songResult.data) {
+        // 猜你喜欢：限定 10 首
+        this.recommendedSongs = songResult.data.slice(0, 10);
+      }
     } catch (error) {
       console.error('加载首页数据失败:', error);
     } finally {
       this.isLoading = false;
+      this.refreshing = false;
     }
   }
 
-  /**
-   * 加载轮播图数据
-   */
-  private async loadBanners(): Promise<BannerInfo[]> {
-    try {
-      const response = await HttpUtil.get<BannerInfo[]>('/banner');
-      return response.data || [];
-    } catch (error) {
-      console.error('加载轮播图失败:', error);
-      return [];
+  private onRefresh(): void {
+    this.refreshing = true;
+    this.loadHomeData();
+  }
+
+  private toTrackModel(song: Song): TrackModel {
+    const track: TrackModel = {
+      id: song.songId.toString(),
+      title: song.songName,
+      artist: song.artistName,
+      album: song.album,
+      cover: song.coverUrl,
+      url: song.audioUrl,
+      duration: Number(song.duration) * 1000,
+      likeStatus: song.likeStatus
+    };
+    return track;
+  }
+
+  private playSong(song: Song, index: number): void {
+    const tracks: TrackModel[] = [];
+    this.recommendedSongs.forEach((item: Song) => {
+      tracks.push(this.toTrackModel(item));
+    });
+    this.audioManager.setTrackList(tracks, index);
+    this.audioManager.play(index);
+    if (index >= 0 && index < tracks.length) {
+      this.globalData.addRecentPlay(tracks[index]);
     }
   }
 
-  /**
-   * 加载推荐歌单
-   */
-  private async loadRecommendedPlaylists(): Promise<PlaylistInfo[]> {
-    try {
-      const response = await HttpUtil.get<PlaylistInfo[]>('/playlist/recommended');
-      return response.data || [];
-    } catch (error) {
-      console.error('加载推荐歌单失败:', error);
-      return [];
-    }
+  private goToPlaylistDetail(playlist: RecommendedPlaylist): void {
+    NavUtil.push('pages/PlaylistDetail/PlaylistDetailPage', { playlistId: playlist.playlistId });
   }
 
-  /**
-   * 加载推荐歌曲
-   */
-  private async loadRecommendedSongs(): Promise<SongListItem[]> {
-    try {
-      const response = await HttpUtil.get<SongListItem[]>('/song/recommended');
-      return response.data || [];
-    } catch (error) {
-      console.error('加载推荐歌曲失败:', error);
-      return [];
-    }
+  private goToAllPlaylists(): void {
+    NavUtil.push('pages/Playlist/PlaylistListPage');
   }
 
-  /**
-   * 关闭欢迎弹窗
-   */
-  private async closeWelcomeModal(): Promise<void> {
-    this.showWelcomeModal = false;
-    await this.globalDataManager.closeWelcomeModal();
+  private goToSearch(): void {
+    NavUtil.push('pages/Search/SearchPage');
   }
 
-  /**
-   * 播放歌曲
-   */
-  private playSong(song: SongListItem, playlist: SongListItem[] = []): void {
-    // 转换为完整的SongInfo格式
-    const songInfo: SongInfo = {
-        id: song.id,
-        name: song.name,
-        artists: song.artists || [],
-        album: song.album || { id: 0, name: '', picUrl: '' },
-        duration: song.duration || 0,
-        url: song.url || '',
-        picUrl: song.picUrl || song.coverUrl || ''
-      };
-
-    const playlistInfo: SongInfo[] = playlist.length > 0 ? 
-      playlist.map(item => ({
-        id: item.id,
-        name: item.name,
-        artists: item.artists || [],
-        album: item.album || { id: 0, name: '', picUrl: '' },
-        duration: item.duration || 0,
-        url: item.url || '',
-        picUrl: item.picUrl || item.coverUrl || ''
-      })) : [songInfo];
-
-    // 获取音频管理器并播放
-    const audioManager = this.globalDataManager.getAudioManager();
-    audioManager.setPlaylist(playlistInfo, playlistInfo.findIndex(s => s.id === songInfo.id));
-    audioManager.play(songInfo, playlistInfo, playlistInfo.findIndex(s => s.id === songInfo.id));
+  private switchToUser(): void {
+    TabManager.setTab(2);
   }
 
-  /**
-   * 轮播图切换回调
-   */
-  private onSwiperChange(index: number): void {
-    this.currentSwiperIndex = index;
-  }
-
-  /**
-   * 跳转到歌单详情
-   */
-  private navigateToPlaylistDetail(playlist: PlaylistInfo): void {
-    // TODO: 导航到歌单详情页面
-    console.log('跳转到歌单详情:', playlist.name);
-  }
-
-  /**
-   * 跳转到用户页面
-   */
-  private navigateToUserPage(): void {
-    // 导航到用户页面
-    try {
-      router.pushUrl({
-        url: 'pages/User/UserPage',
-        params: {}
-      });
-    } catch (error) {
-      console.error('导航到用户页面失败:', error);
-    }
-  }
-
-  /**
-   * 页面构建
-   */
   build() {
-    Stack() {
-      Column() {
-        // 顶部导航栏
-        this.buildHeader()
-
-        // 主要内容区域
-        if (this.isLoading) {
-          this.buildLoadingView()
-        } else {
+    Column() {
+      this.buildHeader()
+      if (this.isLoading) {
+        LoadingView()
+          .layoutWeight(1)
+      } else {
+        Refresh({ refreshing: this.refreshing }) {
           Scroll() {
             Column() {
-              // 轮播图
-              this.buildBannerSection()
-
-              // 推荐歌单
-              this.buildRecommendedPlaylistsSection()
-
-              // 推荐歌曲
-              this.buildRecommendedSongsSection()
+              this.buildBanner()
+              this.buildRecommendedPlaylists()
+              this.buildGuessYouLike()
             }
-            .padding({ bottom: 120 }) // 留出底部播放器空间
+            .padding({ bottom: 24 })
           }
           .scrollBar(BarState.Off)
           .edgeEffect(EdgeEffect.Spring)
         }
-
-        Blank()
-
-        // 底部播放器
-        BottomPlayer()
-
-        // 底部导航栏
-        BottomNavigation()
+        .layoutWeight(1)
+        .onRefreshing(() => this.onRefresh())
       }
-      .width('100%')
-      .height('100%')
-
-      // 欢迎弹窗 - 使用对话框形式
-      if (this.showWelcomeModal) {
-        this.buildWelcomeModalDialog()
-      }
+      Text(this.themeVersion.toString())
+        .fontSize(0)
+        .width(0)
+        .height(0)
     }
     .width('100%')
     .height('100%')
     .backgroundColor(ThemeUtil.getColor('background'))
+    .opacity(this.themeRefresh >= 0 ? 1 : 1)
   }
 
-  /**
-   * 构建顶部导航栏
-   */
   @Builder
   private buildHeader() {
     Row() {
       Image($r('app.media.search'))
         .width(24)
         .height(24)
-        .margin({ right: ThemeUtil.getSpacing('md') })
-        .onClick(() => {
-          // TODO: 跳转到搜索页面
-        })
-
+        .onClick(() => this.goToSearch())
+      Blank()
       Text('发现音乐')
-        .fontSize(ThemeUtil.getFontSize('xl'))
+        .fontSize(ThemeUtil.getFontSize('lg'))
         .fontWeight(FontWeight.Bold)
         .fontColor(ThemeUtil.getColor('textPrimary'))
-
       Blank()
-
       Image($r('app.media.user'))
         .width(24)
         .height(24)
-        .margin({ left: ThemeUtil.getSpacing('md') })
-        .onClick(() => this.navigateToUserPage())
+        .onClick(() => this.switchToUser())
     }
     .width('100%')
     .height(56)
@@ -258,232 +165,174 @@ struct IndexPage {
     .backgroundColor(ThemeUtil.getColor('surface'))
   }
 
-  /**
-   * 构建加载视图
-   */
   @Builder
-  private buildLoadingView() {
+  private buildBanner() {
+    if (this.banners.length > 0) {
+      Swiper() {
+        ForEach(this.banners, (banner: Banner) => {
+          Image(banner.bannerUrl)
+            .width('100%')
+            .height(150)
+            .borderRadius(ThemeUtil.getBorderRadius('lg'))
+            .objectFit(ImageFit.Contain)
+            .margin({ left: ThemeUtil.getSpacing('sm'), right: ThemeUtil.getSpacing('sm') })
+        }, (banner: Banner) => banner.bannerId.toString())
+      }
+      .width('100%')
+      .height(150)
+      .autoPlay(true)
+      .loop(true)
+      .interval(4000)
+      .indicator(true)
+      .margin({ bottom: ThemeUtil.getSpacing('md') })
+    }
+  }
+
+  @Builder
+  private buildRecommendedPlaylists() {
     Column() {
-      LoadingProgress()
-        .width(32)
-        .height(32)
-        .color(ThemeUtil.getColor('primary'))
-      Text('加载中...')
-        .fontSize(ThemeUtil.getFontSize('sm'))
-        .fontColor(ThemeUtil.getColor('textHint'))
-        .margin({ top: ThemeUtil.getSpacing('md') })
+      Column() {
+        Row() {
+          Text('推荐歌单')
+            .fontSize(ThemeUtil.getFontSize('lg'))
+            .fontWeight(FontWeight.Bold)
+            .fontColor(ThemeUtil.getColor('textPrimary'))
+          Blank()
+          Text('更多')
+            .fontSize(ThemeUtil.getFontSize('xs'))
+            .fontColor(ThemeUtil.getColor('textHint'))
+            .onClick(() => this.goToAllPlaylists())
+        }
+        .width('100%')
+        .padding({ left: ThemeUtil.getSpacing('lg'), right: ThemeUtil.getSpacing('lg'), bottom: ThemeUtil.getSpacing('sm') })
+
+        // 固定两行三列，共 6 个
+        Row({ space: 10 }) {
+          ForEach(this.getPlaylistRow(0), (playlist: RecommendedPlaylist) => {
+            this.buildPlaylistCard(playlist)
+          }, (playlist: RecommendedPlaylist) => playlist.playlistId.toString())
+        }
+        .width('100%')
+        .padding({ left: 12, right: 12 })
+
+        Row({ space: 10 }) {
+          ForEach(this.getPlaylistRow(1), (playlist: RecommendedPlaylist) => {
+            this.buildPlaylistCard(playlist)
+          }, (playlist: RecommendedPlaylist) => playlist.playlistId.toString())
+        }
+        .width('100%')
+        .padding({ left: 12, right: 12 })
+        .margin({ top: 12 })
+      }
+      .width('100%')
+      .backgroundColor(ThemeUtil.getColor('surface'))
+      .borderRadius(16)
+      .padding({ top: ThemeUtil.getSpacing('md'), bottom: ThemeUtil.getSpacing('md') })
     }
     .width('100%')
-    .height('100%')
-    .justifyContent(FlexAlign.Center)
+    .padding({ left: 12, right: 12 })
+    .margin({ bottom: 12 })
   }
 
   /**
-   * 构建轮播图区域
+   * 歌单行数据：第 0 行前 3 个，第 1 行后 3 个
    */
+  private getPlaylistRow(rowIndex: number): RecommendedPlaylist[] {
+    if (rowIndex === 0) {
+      return this.recommendedPlaylists.slice(0, 3);
+    }
+    return this.recommendedPlaylists.slice(3, 6);
+  }
+
   @Builder
-  private buildBannerSection() {
-    if (this.banners.length === 0) {
+  private buildPlaylistCard(playlist: RecommendedPlaylist) {
+    Column() {
+      Image(playlist.coverUrl ? playlist.coverUrl : $r('app.media.default_cover'))
+        .width('100%')
+        .aspectRatio(1)
+        .borderRadius(ThemeUtil.getBorderRadius('md'))
+        .objectFit(ImageFit.Cover)
+        .backgroundColor(ThemeUtil.getColor('background'))
+
+      Text(playlist.title)
+        .fontSize(ThemeUtil.getFontSize('xs'))
+        .fontColor(ThemeUtil.getColor('textPrimary'))
+        .maxLines(2)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .width('100%')
+        .height(24)
+        .margin({ top: 6 })
+    }
+    .layoutWeight(1)
+    .onClick(() => this.goToPlaylistDetail(playlist))
+  }
+
+  @Builder
+  private buildGuessYouLike() {
+    Column() {
+      Column() {
+        Row() {
+          Text('猜你喜欢')
+            .fontSize(ThemeUtil.getFontSize('lg'))
+            .fontWeight(FontWeight.Bold)
+            .fontColor(ThemeUtil.getColor('textPrimary'))
+          Blank()
+          Text('换一批')
+            .fontSize(ThemeUtil.getFontSize('xs'))
+            .fontColor(ThemeUtil.getColor('primary'))
+            .onClick(() => this.refreshGuessYouLike())
+        }
+        .width('100%')
+        .padding({ left: ThemeUtil.getSpacing('lg'), right: ThemeUtil.getSpacing('lg'), bottom: ThemeUtil.getSpacing('sm') })
+
+        // 一行一首，播放键在右侧
+        ForEach(this.recommendedSongs, (song: Song, index: number) => {
+          SongRow({
+            song: song,
+            index: index,
+            showLike: true,
+            onPlay: (item: Song, itemIndex: number) => this.playSong(item, itemIndex),
+            onLike: (item: Song) => this.toggleLike(item)
+          })
+        }, (song: Song) => song.songId.toString())
+      }
+      .width('100%')
+      .backgroundColor(ThemeUtil.getColor('surface'))
+      .borderRadius(16)
+      .padding({ top: ThemeUtil.getSpacing('md'), bottom: ThemeUtil.getSpacing('md') })
+    }
+    .width('100%')
+    .padding({ left: 12, right: 12 })
+  }
+
+  private async refreshGuessYouLike(): Promise<void> {
+    try {
+      const songResult = await ApiService.getRecommendedSongs();
+      if (songResult.code === 0 && songResult.data) {
+        this.recommendedSongs = songResult.data.slice(0, 10);
+      }
+    } catch (error) {
+      console.error('刷新猜你喜欢失败:', error);
+    }
+  }
+
+  private toggleLike(song: Song): void {
+    if (!this.globalData.getIsLoggedIn()) {
+      NavUtil.push('pages/Login/LoginPage');
       return;
     }
-
-    Swiper() {
-      ForEach(this.banners, (banner: BannerInfo, index: number) => {
-        Image(banner.picUrl)
-          .width('100%')
-          .height(160)
-          .borderRadius(ThemeUtil.getBorderRadius('lg'))
-          .margin({ left: ThemeUtil.getSpacing('lg'), right: ThemeUtil.getSpacing('lg') })
-          .onClick(() => {
-            // 处理轮播图点击事件
-            console.log('点击轮播图:', banner.title);
-          })
-      }, (banner: BannerInfo, index: number) => banner.id.toString())
-    }
-    .width('100%')
-    .height(160)
-    .indicator(this.banners.length > 1)
-    .indicatorStyle({ color: ThemeUtil.getColor('primary') })
-    .onChange((index: number) => this.onSwiperChange(index))
-    .margin({ bottom: ThemeUtil.getSpacing('md') })
-  }
-
-  /**
-   * 构建推荐歌单区域
-   */
-  @Builder
-  private buildRecommendedPlaylistsSection() {
-    Column() {
-      Row() {
-        Text('推荐歌单')
-          .fontSize(ThemeUtil.getFontSize('lg'))
-          .fontWeight(FontWeight.Bold)
-          .fontColor(ThemeUtil.getColor('textPrimary'))
-        
-        Blank()
-        
-        Text('更多')
-          .fontSize(ThemeUtil.getFontSize('xs'))
-          .fontColor(ThemeUtil.getColor('textHint'))
-          .onClick(() => {
-            // TODO: 跳转到歌单列表页面
-          })
-      }
-      .width('100%')
-      .padding({ left: ThemeUtil.getSpacing('lg'), right: ThemeUtil.getSpacing('lg'), bottom: ThemeUtil.getSpacing('sm') })
-
-      Scroll() {
-        Row() {
-          ForEach(this.recommendedPlaylists, (playlist: PlaylistInfo, index: number) => {
-            Column() {
-              Image(playlist.coverUrl || '')
-                .width(120)
-                .height(120)
-                .borderRadius(ThemeUtil.getBorderRadius('lg'))
-              
-              Text(playlist.name)
-                .fontSize(ThemeUtil.getFontSize('xs'))
-                .fontColor(ThemeUtil.getColor('textPrimary'))
-                .maxLines(2)
-                .textOverflow({ overflow: TextOverflow.Ellipsis })
-                .width(120)
-                .margin({ top: ThemeUtil.getSpacing('sm') })
-            }
-            .margin({ right: ThemeUtil.getSpacing('md') })
-            .onClick(() => this.navigateToPlaylistDetail(playlist))
-          }, (playlist: PlaylistInfo) => playlist.id.toString())
+    if (song.likeStatus === 1) {
+      ApiService.cancelCollectSong(song.songId).then((result) => {
+        if (result.code === 0) {
+          song.likeStatus = 0;
         }
-        .padding({ left: ThemeUtil.getSpacing('lg'), right: ThemeUtil.getSpacing('lg') })
-      }
-      .scrollBar(BarState.Off)
-      .height(170)
+      });
+    } else {
+      ApiService.collectSong(song.songId).then((result) => {
+        if (result.code === 0) {
+          song.likeStatus = 1;
+        }
+      });
     }
-    .width('100%')
-    .margin({ bottom: ThemeUtil.getSpacing('md') })
-    .backgroundColor(ThemeUtil.getColor('surface'))
-    .padding({ top: ThemeUtil.getSpacing('sm') })
-  }
-
-  /**
-   * 构建推荐歌曲区域
-   */
-  @Builder
-  private buildRecommendedSongsSection() {
-    Column() {
-      Row() {
-        Text('推荐歌曲')
-          .fontSize(ThemeUtil.getFontSize('lg'))
-          .fontWeight(FontWeight.Bold)
-          .fontColor(ThemeUtil.getColor('textPrimary'))
-        
-        Blank()
-        
-        Text('更多')
-          .fontSize(ThemeUtil.getFontSize('xs'))
-          .fontColor(ThemeUtil.getColor('textHint'))
-          .onClick(() => {
-            // TODO: 跳转到歌曲列表页面
-          })
-      }
-      .width('100%')
-      .padding({ left: ThemeUtil.getSpacing('lg'), right: ThemeUtil.getSpacing('lg'), bottom: ThemeUtil.getSpacing('sm') })
-
-      ForEach(this.recommendedSongs, (song: SongListItem, index: number) => {
-        this.buildSongItem(song, index)
-      }, (song: SongListItem) => song.id.toString())
-    }
-    .width('100%')
-    .backgroundColor(ThemeUtil.getColor('surface'))
-    .padding({ top: ThemeUtil.getSpacing('sm'), bottom: ThemeUtil.getSpacing('sm') })
-  }
-
-  /**
-   * 构建歌曲项
-   */
-  @Builder
-  private buildSongItem(song: SongListItem, index: number) {
-    Row() {
-      Text((index + 1).toString())
-        .fontSize(ThemeUtil.getFontSize('sm'))
-        .fontColor(ThemeUtil.getColor('textHint'))
-        .width(30)
-        .textAlign(TextAlign.Center)
-
-      Column() {
-        Text(song.name)
-          .fontSize(ThemeUtil.getFontSize('md'))
-          .fontColor(ThemeUtil.getColor('textPrimary'))
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-        
-        Text(song.artists?.map(artist => artist.name).join(' / ') || '未知艺术家')
-          .fontSize(ThemeUtil.getFontSize('xs'))
-          .fontColor(ThemeUtil.getColor('textHint'))
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-      }
-      .layoutWeight(1)
-      .margin({ left: ThemeUtil.getSpacing('md') })
-
-      Image($r('app.media.ic_play'))
-        .width(20)
-        .height(20)
-        .margin({ left: ThemeUtil.getSpacing('md') })
-        .onClick(() => this.playSong(song, this.recommendedSongs))
-    }
-    .width('100%')
-    .height(60)
-    .padding({ left: ThemeUtil.getSpacing('lg'), right: ThemeUtil.getSpacing('lg') })
-    .onClick(() => this.playSong(song, this.recommendedSongs))
-  }
-
-  /**
-   * 构建欢迎弹窗
-   */
-  @Builder
-  private buildWelcomeModal() {
-    Column() {
-      Text('欢迎使用')
-        .fontSize(ThemeUtil.getFontSize('xl'))
-        .fontWeight(FontWeight.Bold)
-        .fontColor(ThemeUtil.getColor('textPrimary'))
-        .margin({ bottom: ThemeUtil.getSpacing('sm') })
-
-      Text('聆听美好，享受音乐')
-        .fontSize(ThemeUtil.getFontSize('sm'))
-        .fontColor(ThemeUtil.getColor('textSecondary'))
-        .margin({ bottom: ThemeUtil.getSpacing('xl') })
-
-      Button('开始体验')
-        .width(120)
-        .height(40)
-        .fontSize(ThemeUtil.getFontSize('sm'))
-        .fontColor(ThemeUtil.getColor('onPrimary'))
-        .backgroundColor(ThemeUtil.getColor('primary'))
-        .borderRadius(ThemeUtil.getBorderRadius('lg'))
-        .onClick(() => this.closeWelcomeModal())
-    }
-    .width(280)
-    .padding(24)
-    .backgroundColor(ThemeUtil.getColor('surface'))
-    .borderRadius(ThemeUtil.getBorderRadius('xl'))
-  }
-  .width('100%')
-  .height('100%')
-  .backgroundColor(ThemeUtil.getColor('overlay'))
-  .justifyContent(FlexAlign.Center)
-  .alignItems(HorizontalAlign.Center)
-}
-
-/**
- * 首页应用程序入口
- */
-export default class IndexApplication extends App {
-  onCreate(): void {
-    console.log('首页应用启动');
-  }
-
-  onDestroy(): void {
-    console.log('首页应用销毁');
   }
 }

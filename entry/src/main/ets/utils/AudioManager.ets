@@ -1,443 +1,569 @@
-// 音频管理器 - 移植自微信小程序的AudioManager
-import media from '@ohos.multimedia.media';
-import { SongInfo, PlayMode, PlayerState } from '../types/common';
+/**
+ * 音频播放引擎（单例，ArkTS 规范）
+ * 基于 AVPlayer（@ohos.multimedia.media），对齐 music-client 播放行为
+ */
+import { media } from '@kit.MediaKit';
+import { ApiService } from '../api/ApiService';
+import { MediaSessionManager } from './MediaSessionManager';
+import { StorageUtil } from './StorageUtil';
+import { PlayMode, PlayerState, TrackModel } from '../types/common';
+
+export type PlayStatusListener = (isPlaying: boolean) => void;
+export type ProgressListener = (currentTime: number, duration: number) => void;
+export type TrackChangeListener = (track: TrackModel, index: number) => void;
+export type StateListener = (state: PlayerState) => void;
 
 export class AudioManager {
   private static instance: AudioManager | null = null;
-  private audioPlayer: media.AudioPlayer | null = null;
-  private currentSong: SongInfo | null = null;
-  private currentIndex: number = 0;
-  private playlist: SongInfo[] = [];
+  private avPlayer: media.AVPlayer | null = null;
+  private trackList: TrackModel[] = [];
+  private currentIndex: number = -1;
   private playerState: PlayerState = PlayerState.STOPPED;
-  private playMode: PlayMode = PlayMode.SEQUENCE;
-  private progress: number = 0;
+  private playMode: PlayMode = PlayMode.ORDER;
+  private currentTime: number = 0;
   private duration: number = 0;
-  private volume: number = 1.0;
-  private isLoop: boolean = false;
-  private isRandom: boolean = false;
-  
-  // 事件监听器
-  private playListeners: Array<(isPlaying: boolean) => void> = [];
-  private progressListeners: Array<(progress: number, duration: number) => void> = [];
-  private songChangeListeners: Array<(song: SongInfo, index: number) => void> = [];
-  private stateChangeListeners: Array<(state: PlayerState) => void> = [];
+  private volume: number = 50;
+  private quality: string = 'exhigh';
+  private pendingUrl: string = '';
+  private prepared: boolean = false;
+  private mediaSession: MediaSessionManager = MediaSessionManager.getInstance();
+
+  private playListeners: PlayStatusListener[] = [];
+  private progressListeners: ProgressListener[] = [];
+  private trackListeners: TrackChangeListener[] = [];
+  private stateListeners: StateListener[] = [];
 
   private constructor() {
-    this.initAudioPlayer();
   }
 
-  /**
-   * 获取单例实例
-   */
   static getInstance(): AudioManager {
-    if (!AudioManager.instance) {
+    if (AudioManager.instance === null) {
       AudioManager.instance = new AudioManager();
     }
     return AudioManager.instance;
   }
 
   /**
-   * 初始化音频播放器
+   * 恢复上次播放状态（应用启动时调用）
    */
-  private async initAudioPlayer(): Promise<void> {
-    try {
-      this.audioPlayer = await media.createAudioPlayer();
-      this.setupEventListeners();
-    } catch (error) {
-      console.error('初始化音频播放器失败:', error);
+  async restore(): Promise<void> {
+    const volume = await StorageUtil.getNumber('audio_volume', 50);
+    this.volume = Math.max(0, Math.min(100, volume));
+    const quality = await StorageUtil.getString('audio_quality', 'exhigh');
+    this.quality = quality;
+    const mode = await StorageUtil.getNumber('audio_play_mode', PlayMode.ORDER);
+    this.playMode = mode as PlayMode;
+    const trackList = await StorageUtil.getObject<TrackModel[]>('audio_track_list', null);
+    const currentIndex = await StorageUtil.getNumber('audio_current_index', 0);
+    if (trackList && trackList.length > 0) {
+      this.trackList = trackList;
+      if (currentIndex >= 0 && currentIndex < trackList.length) {
+        this.currentIndex = currentIndex;
+      }
     }
   }
 
   /**
-   * 设置事件监听器
+   * 创建 AVPlayer（惰性初始化）
    */
-  private setupEventListeners(): void {
-    if (!this.audioPlayer) return;
-
-    // 播放状态变化
-    this.audioPlayer.on('play', () => {
-      this.playerState = PlayerState.PLAYING;
-      this.notifyPlayListeners(true);
-      this.notifyStateChangeListeners(this.playerState);
-    });
-
-    this.audioPlayer.on('pause', () => {
-      this.playerState = PlayerState.PAUSED;
-      this.notifyPlayListeners(false);
-      this.notifyStateChangeListeners(this.playerState);
-    });
-
-    this.audioPlayer.on('finish', () => {
-      this.playerState = PlayerState.COMPLETED;
-      this.notifyStateChangeListeners(this.playerState);
-      // 自动播放下一首
-      if (this.playMode !== PlayMode.SINGLE) {
-        this.next();
-      }
-    });
-
-    this.audioPlayer.on('error', (error) => {
-      console.error('音频播放错误:', error);
-      this.playerState = PlayerState.ERROR;
-      this.notifyStateChangeListeners(this.playerState);
-    });
-
-    // 进度更新
-    this.audioPlayer.on('timeUpdate', (currentTime: number) => {
-      this.progress = currentTime;
-      this.notifyProgressListeners(this.progress, this.duration);
-    });
-
-    // 音频信息更新
-    this.audioPlayer.on('loadedData', () => {
-      const duration = this.audioPlayer?.duration || 0;
-      this.duration = duration;
-      this.notifyProgressListeners(this.progress, this.duration);
-    });
+  private async ensurePlayer(): Promise<void> {
+    if (this.avPlayer !== null) {
+      return;
+    }
+    try {
+      this.avPlayer = await this.createPlayer();
+    } catch (error) {
+      console.error('初始化播放器失败:', JSON.stringify(error));
+    }
   }
 
   /**
-   * 播放音乐
-   * @param song 歌曲信息
-   * @param playlist 播放列表
-   * @param index 播放索引
+   * 创建全新 AVPlayer 并绑定事件与媒体会话命令
    */
-  async play(song?: SongInfo, playlist?: SongInfo[], index: number = 0): Promise<void> {
+  private async createPlayer(): Promise<media.AVPlayer> {
     try {
-      // 如果指定了歌曲、播放列表和索引，更新当前播放状态
-      if (song && playlist) {
-        this.currentSong = song;
-        this.playlist = [...playlist];
-        this.currentIndex = index;
-      }
+      const player = await media.createAVPlayer();
+      this.setupEvents(player);
+      this.mediaSession.onPlayCommand = () => {
+        this.resume();
+      };
+      this.mediaSession.onPauseCommand = () => {
+        this.pause();
+      };
+      this.mediaSession.onNextCommand = () => {
+        this.next();
+      };
+      this.mediaSession.onPreviousCommand = () => {
+        this.previous();
+      };
+      return player;
+    } catch (error) {
+      console.error('创建播放器失败:', JSON.stringify(error));
+      throw error as Error;
+    }
+  }
 
-      // 如果没有当前歌曲，使用默认
-      if (!this.currentSong && this.playlist.length > 0) {
-        this.currentSong = this.playlist[this.currentIndex];
+  private setupEvents(player: media.AVPlayer): void {
+    if (player === null) {
+      return;
+    }
+    player.on('stateChange', (state: media.AVPlayerState) => {
+      if (state === 'playing') {
+        this.playerState = PlayerState.PLAYING;
+        this.notifyPlay(true);
+        this.mediaSession.updateState(PlayerState.PLAYING, this.currentTime);
+      } else if (state === 'paused') {
+        this.playerState = PlayerState.PAUSED;
+        this.notifyPlay(false);
+        this.mediaSession.updateState(PlayerState.PAUSED, this.currentTime);
+      } else if (state === 'stopped') {
+        this.playerState = PlayerState.STOPPED;
+        this.notifyPlay(false);
+        this.mediaSession.updateState(PlayerState.STOPPED, 0);
+      } else if (state === 'completed') {
+        this.playerState = PlayerState.COMPLETED;
+        this.notifyPlay(false);
+        this.mediaSession.updateState(PlayerState.COMPLETED, this.duration);
+        this.handlePlayEnd();
+      } else if (state === 'error') {
+        this.playerState = PlayerState.ERROR;
+        this.notifyPlay(false);
       }
+      this.notifyState(this.playerState);
+    });
+    player.on('timeUpdate', (time: number) => {
+      this.currentTime = time;
+      this.notifyProgress(this.currentTime, this.duration);
+    });
+    player.on('durationUpdate', (duration: number) => {
+      this.duration = duration;
+      this.notifyProgress(this.currentTime, this.duration);
+    });
+    player.on('error', (error: Error) => {
+      console.error('播放错误:', JSON.stringify(error));
+      this.playerState = PlayerState.ERROR;
+      this.notifyState(this.playerState);
+    });
+  }
 
-      if (!this.currentSong) {
-        console.warn('没有可播放的歌曲');
+  // ========== 播放列表管理 ==========
+  setTrackList(list: TrackModel[], index: number = 0): void {
+    this.trackList = list;
+    if (index >= 0 && index < list.length) {
+      this.currentIndex = index;
+    } else if (list.length > 0) {
+      this.currentIndex = 0;
+    } else {
+      this.currentIndex = -1;
+    }
+    this.persistTrackList();
+  }
+
+  getTrackList(): TrackModel[] {
+    return this.trackList;
+  }
+
+  addTrack(track: TrackModel): void {
+    const existingIndex = this.findTrackIndex(track.id);
+    if (existingIndex > -1) {
+      this.currentIndex = existingIndex;
+      return;
+    }
+    this.trackList.push(track);
+    this.currentIndex = this.trackList.length - 1;
+  }
+
+  deleteTrack(id: string): void {
+    const index = this.findTrackIndex(id);
+    if (index > -1) {
+      this.trackList.splice(index, 1);
+      if (this.currentIndex > index) {
+        this.currentIndex--;
+      } else if (this.currentIndex === index) {
+        this.currentIndex = this.trackList.length > 0 ? Math.min(index, this.trackList.length - 1) : -1;
+      }
+    }
+    this.persistTrackList();
+  }
+
+  clearTrackList(): void {
+    this.trackList = [];
+    this.currentIndex = -1;
+    this.stop();
+    this.persistTrackList();
+  }
+
+  private findTrackIndex(id: string): number {
+    return this.trackList.findIndex((track: TrackModel) => track.id === id);
+  }
+
+  private updateTrackInList(track: TrackModel): void {
+    const index = this.findTrackIndex(track.id);
+    if (index > -1) {
+      this.trackList[index] = track;
+    }
+  }
+
+  // ========== 播放控制 ==========
+  async play(index?: number): Promise<void> {
+    if (index !== undefined && index >= 0 && index < this.trackList.length) {
+      this.currentIndex = index;
+    }
+    if (this.trackList.length === 0 || this.currentIndex < 0) {
+      return;
+    }
+    const track = this.trackList[this.currentIndex];
+    await this.ensurePlayer();
+    if (this.avPlayer === null) {
+      return;
+    }
+    await this.resolveTrackUrl(track);
+    if (!track.url) {
+      this.playerState = PlayerState.ERROR;
+      this.notifyState(this.playerState);
+      return;
+    }
+    try {
+      // 参照小程序 audioManager：每次播放都重新设置音频源后再 play
+      await this.switchTrack(track.url);
+      await this.avPlayer.play();
+      // 确认真正进入播放状态（避免状态属性滞后误判）
+      await this.waitForState(this.avPlayer, 'playing', 3000);
+      // 主动同步播放状态，确保 UI 立即切换（不依赖事件时序）
+      this.playerState = PlayerState.PLAYING;
+      this.notifyPlay(true);
+      this.pendingUrl = track.url;
+      this.notifyTrack(track, this.currentIndex);
+      this.mediaSession.updateSession(track, PlayerState.PLAYING, this.playMode);
+      this.persistTrackList();
+    } catch (error) {
+      console.error('播放失败:', JSON.stringify(error));
+      this.playerState = PlayerState.ERROR;
+      this.notifyState(this.playerState);
+    }
+  }
+
+  /**
+   * 切换歌曲：参照小程序 audioManager（src = 新地址; play()）
+   * AVPlayer 对应：reset → setMediaSource → prepare → play
+   */
+  private async switchTrack(url: string): Promise<void> {
+    try {
+      if (this.avPlayer === null) {
+        this.avPlayer = await this.createPlayer();
+      } else if (this.avPlayer.state !== 'idle') {
+        // reset 仅在非 idle 状态可用（idle 为刚创建状态，直接 setMediaSource）
+        // reset 后回到 idle，可重新设置媒体源
+        await this.avPlayer.reset();
+      }
+      this.prepared = false;
+      const player = this.avPlayer;
+      const source = media.createMediaSourceWithUrl(url);
+      await player.setMediaSource(source);
+      // setMediaSource 的 Promise 返回时状态可能尚未更新为 initialized，必须等待状态事件
+      const initReady: boolean = await this.waitForState(player, 'initialized', 3000);
+      if (!initReady) {
+        throw new Error('音频源初始化超时');
+      }
+      await player.prepare();
+      const prepared: boolean = await this.waitForState(player, 'prepared', 5000);
+      if (!prepared) {
+        throw new Error('音频准备超时');
+      }
+      this.prepared = true;
+    } catch (error) {
+      console.error('加载音频源失败:', JSON.stringify(error));
+      throw error as Error;
+    }
+  }
+
+  /**
+   * 等待 AVPlayer 进入指定状态（基于 stateChange 事件）
+   */
+  private waitForState(player: media.AVPlayer, target: media.AVPlayerState, timeoutMs: number): Promise<boolean> {
+    return new Promise((resolve: (result: boolean) => void) => {
+      if (player.state === target) {
+        resolve(true);
         return;
       }
-
-      if (!this.audioPlayer) {
-        await this.initAudioPlayer();
-      }
-
-      // 设置音频源
-      await this.audioPlayer!.src = this.currentSong.url;
-      await this.audioPlayer!.play();
-
-      // 通知歌曲变化
-      if (song) {
-        this.notifySongChangeListeners(this.currentSong, this.currentIndex);
-      }
-
-    } catch (error) {
-      console.error('播放音乐失败:', error);
-      this.playerState = PlayerState.ERROR;
-      this.notifyStateChangeListeners(this.playerState);
-    }
+      const handler = (state: media.AVPlayerState) => {
+        if (state === target) {
+          player.off('stateChange', handler);
+          clearTimeout(timer);
+          resolve(true);
+        }
+      };
+      const timer = setTimeout(() => {
+        player.off('stateChange', handler);
+        resolve(false);
+      }, timeoutMs);
+      player.on('stateChange', handler);
+    });
   }
 
-  /**
-   * 暂停播放
-   */
   async pause(): Promise<void> {
     try {
-      if (this.audioPlayer && this.playerState === PlayerState.PLAYING) {
-        await this.audioPlayer.pause();
+      if (this.avPlayer !== null && this.playerState === PlayerState.PLAYING) {
+        await this.avPlayer.pause();
+        this.playerState = PlayerState.PAUSED;
+        this.notifyPlay(false);
       }
     } catch (error) {
-      console.error('暂停播放失败:', error);
+      console.error('暂停播放失败:', JSON.stringify(error));
     }
   }
 
-  /**
-   * 恢复播放
-   */
   async resume(): Promise<void> {
     try {
-      if (this.audioPlayer && this.playerState === PlayerState.PAUSED) {
-        await this.audioPlayer.play();
+      if (this.avPlayer !== null && this.playerState === PlayerState.PAUSED) {
+        await this.avPlayer.play();
+        this.playerState = PlayerState.PLAYING;
+        this.notifyPlay(true);
       }
     } catch (error) {
-      console.error('恢复播放失败:', error);
+      console.error('恢复播放失败:', JSON.stringify(error));
     }
   }
 
-  /**
-   * 停止播放
-   */
   async stop(): Promise<void> {
-    try {
-      if (this.audioPlayer) {
-        await this.audioPlayer.stop();
-        this.playerState = PlayerState.STOPPED;
-        this.progress = 0;
-        this.notifyPlayListeners(false);
-        this.notifyStateChangeListeners(this.playerState);
+    if (this.avPlayer !== null) {
+      try {
+        if (this.avPlayer.state === 'playing' || this.avPlayer.state === 'paused' ||
+          this.avPlayer.state === 'prepared' || this.avPlayer.state === 'completed') {
+          await this.avPlayer.stop();
+        }
+        this.prepared = false;
+      } catch (error) {
+        console.error('停止播放失败:', JSON.stringify(error));
       }
-    } catch (error) {
-      console.error('停止播放失败:', error);
     }
   }
 
-  /**
-   * 切换播放/暂停状态
-   */
   async togglePlayPause(): Promise<void> {
     if (this.playerState === PlayerState.PLAYING) {
       await this.pause();
     } else if (this.playerState === PlayerState.PAUSED) {
       await this.resume();
     } else {
-      // 如果是停止状态，重新播放
       await this.play();
     }
   }
 
-  /**
-   * 播放上一首
-   */
-  async previous(): Promise<void> {
-    if (this.playlist.length === 0) return;
-
-    if (this.isRandom) {
-      // 随机播放模式
-      this.currentIndex = Math.floor(Math.random() * this.playlist.length);
-    } else {
-      // 顺序播放或列表循环
-      this.currentIndex = this.currentIndex > 0 ? 
-        this.currentIndex - 1 : 
-        (this.playMode === PlayMode.LOOP ? this.playlist.length - 1 : 0);
-    }
-
-    this.currentSong = this.playlist[this.currentIndex];
-    await this.play();
-  }
-
-  /**
-   * 播放下一首
-   */
   async next(): Promise<void> {
-    if (this.playlist.length === 0) return;
-
-    if (this.isRandom) {
-      // 随机播放模式
-      this.currentIndex = Math.floor(Math.random() * this.playlist.length);
-    } else {
-      // 顺序播放或列表循环
-      this.currentIndex = this.currentIndex < this.playlist.length - 1 ? 
-        this.currentIndex + 1 : 
-        (this.playMode === PlayMode.LOOP ? 0 : this.playlist.length - 1);
+    if (this.trackList.length === 0) {
+      return;
     }
-
-    this.currentSong = this.playlist[this.currentIndex];
+    if (this.playMode === PlayMode.SHUFFLE) {
+      this.currentIndex = Math.floor(Math.random() * this.trackList.length);
+    } else if (this.playMode === PlayMode.SINGLE) {
+      await this.seekTo(0);
+      await this.play();
+      return;
+    } else {
+      if (this.currentIndex < this.trackList.length - 1) {
+        this.currentIndex++;
+      } else {
+        this.currentIndex = 0;
+      }
+    }
     await this.play();
   }
 
-  /**
-   * 设置播放进度
-   * @param progress 进度（毫秒）
-   */
+  async previous(): Promise<void> {
+    if (this.trackList.length === 0) {
+      return;
+    }
+    if (this.playMode === PlayMode.SHUFFLE) {
+      this.currentIndex = Math.floor(Math.random() * this.trackList.length);
+    } else if (this.playMode === PlayMode.SINGLE) {
+      await this.seekTo(0);
+      await this.play();
+      return;
+    } else {
+      if (this.currentIndex > 0) {
+        this.currentIndex--;
+      } else {
+        this.currentIndex = this.trackList.length - 1;
+      }
+    }
+    await this.play();
+  }
+
   async seekTo(progress: number): Promise<void> {
-    try {
-      if (this.audioPlayer) {
-        await this.audioPlayer.seek(progress);
-        this.progress = progress;
-      }
-    } catch (error) {
-      console.error('设置播放进度失败:', error);
-    }
-  }
-
-  /**
-   * 设置音量
-   * @param volume 音量（0.0-1.0）
-   */
-  async setVolume(volume: number): Promise<void> {
-    try {
-      this.volume = Math.max(0, Math.min(1, volume));
-      if (this.audioPlayer) {
-        await this.audioPlayer.setVolume(this.volume);
-      }
-    } catch (error) {
-      console.error('设置音量失败:', error);
-    }
-  }
-
-  /**
-   * 设置播放模式
-   * @param mode 播放模式
-   */
-  setPlayMode(mode: PlayMode): void {
-    this.playMode = mode;
-    this.isLoop = mode === PlayMode.SINGLE || mode === PlayMode.LOOP;
-    this.isRandom = mode === PlayMode.RANDOM;
-  }
-
-  /**
-   * 设置播放列表
-   * @param playlist 播放列表
-   * @param index 起始索引
-   */
-  setPlaylist(playlist: SongInfo[], index: number = 0): void {
-    this.playlist = [...playlist];
-    this.currentIndex = index;
-    this.currentSong = playlist[index] || null;
-  }
-
-  /**
-   * 添加到播放列表
-   * @param song 歌曲
-   */
-  addToPlaylist(song: SongInfo): void {
-    this.playlist.push(song);
-  }
-
-  /**
-   * 从播放列表移除
-   * @param index 索引
-   */
-  removeFromPlaylist(index: number): void {
-    if (index >= 0 && index < this.playlist.length) {
-      this.playlist.splice(index, 1);
-      // 如果移除的是当前播放歌曲，调整当前索引
-      if (index <= this.currentIndex) {
-        this.currentIndex = Math.max(0, this.currentIndex - 1);
+    if (this.avPlayer !== null && this.prepared) {
+      try {
+        this.avPlayer.seek(progress);
+        this.currentTime = progress;
+        this.notifyProgress(this.currentTime, this.duration);
+      } catch (error) {
+        console.error('设置播放进度失败:', JSON.stringify(error));
       }
     }
   }
 
-  // Getter方法
-  getCurrentSong(): SongInfo | null {
-    return this.currentSong;
-  }
-
-  getCurrentIndex(): number {
-    return this.currentIndex;
-  }
-
-  getPlaylist(): SongInfo[] {
-    return [...this.playlist];
-  }
-
-  getPlayerState(): PlayerState {
-    return this.playerState;
-  }
-
-  getProgress(): number {
-    return this.progress;
-  }
-
-  getDuration(): number {
-    return this.duration;
+  setVolume(volume: number): void {
+    const clamped = Math.max(0, Math.min(100, volume));
+    this.volume = clamped;
+    if (this.avPlayer !== null && this.prepared) {
+      this.avPlayer.setVolume(clamped / 100);
+    }
+    StorageUtil.putNumber('audio_volume', clamped);
   }
 
   getVolume(): number {
     return this.volume;
   }
 
+  setQuality(quality: string): void {
+    this.quality = quality;
+    StorageUtil.putString('audio_quality', quality);
+  }
+
+  getQuality(): string {
+    return this.quality;
+  }
+
+  setPlayMode(mode: PlayMode): void {
+    this.playMode = mode;
+    StorageUtil.putNumber('audio_play_mode', mode);
+    if (this.playerState === PlayerState.PLAYING || this.playerState === PlayerState.PAUSED) {
+      this.mediaSession.updateState(this.playerState, this.currentTime);
+    }
+  }
+
   getPlayMode(): PlayMode {
     return this.playMode;
+  }
+
+  // ========== 状态读取 ==========
+  getCurrentTrack(): TrackModel | null {
+    if (this.currentIndex < 0 || this.currentIndex >= this.trackList.length) {
+      return null;
+    }
+    return this.trackList[this.currentIndex];
+  }
+
+  getCurrentIndex(): number {
+    return this.currentIndex;
+  }
+
+  setCurrentIndex(index: number): void {
+    if (index >= 0 && index < this.trackList.length) {
+      this.currentIndex = index;
+    }
+  }
+
+  getPlayerState(): PlayerState {
+    return this.playerState;
   }
 
   isPlaying(): boolean {
     return this.playerState === PlayerState.PLAYING;
   }
 
-  // 事件监听器管理
-  onPlay(listener: (isPlaying: boolean) => void): void {
+  getCurrentTime(): number {
+    return this.currentTime;
+  }
+
+  getDuration(): number {
+    return this.duration;
+  }
+
+  // ========== 事件订阅 ==========
+  onPlay(listener: PlayStatusListener): void {
     this.playListeners.push(listener);
   }
 
-  onProgress(listener: (progress: number, duration: number) => void): void {
+  offPlay(listener: PlayStatusListener): void {
+    this.removeListener(this.playListeners, listener);
+  }
+
+  onProgress(listener: ProgressListener): void {
     this.progressListeners.push(listener);
   }
 
-  onSongChange(listener: (song: SongInfo, index: number) => void): void {
-    this.songChangeListeners.push(listener);
+  offProgress(listener: ProgressListener): void {
+    this.removeListener(this.progressListeners, listener);
   }
 
-  onStateChange(listener: (state: PlayerState) => void): void {
-    this.stateChangeListeners.push(listener);
+  onTrackChange(listener: TrackChangeListener): void {
+    this.trackListeners.push(listener);
   }
 
-  // 移除事件监听器
-  removePlayListener(listener: (isPlaying: boolean) => void): void {
-    const index = this.playListeners.indexOf(listener);
+  offTrackChange(listener: TrackChangeListener): void {
+    this.removeListener(this.trackListeners, listener);
+  }
+
+  onState(listener: StateListener): void {
+    this.stateListeners.push(listener);
+  }
+
+  offState(listener: StateListener): void {
+    this.removeListener(this.stateListeners, listener);
+  }
+
+  private removeListener<T>(listeners: T[], listener: T): void {
+    const index = listeners.indexOf(listener);
     if (index > -1) {
-      this.playListeners.splice(index, 1);
+      listeners.splice(index, 1);
     }
   }
 
-  removeProgressListener(listener: (progress: number, duration: number) => void): void {
-    const index = this.progressListeners.indexOf(listener);
-    if (index > -1) {
-      this.progressListeners.splice(index, 1);
+  // ========== 内部逻辑 ==========
+  private async resolveTrackUrl(track: TrackModel): Promise<void> {
+    if (track.url && track.url.length > 0) {
+      return;
     }
-  }
-
-  removeSongChangeListener(listener: (song: SongInfo, index: number) => void): void {
-    const index = this.songChangeListeners.indexOf(listener);
-    if (index > -1) {
-      this.songChangeListeners.splice(index, 1);
-    }
-  }
-
-  removeStateChangeListener(listener: (state: PlayerState) => void): void {
-    const index = this.stateChangeListeners.indexOf(listener);
-    if (index > -1) {
-      this.stateChangeListeners.splice(index, 1);
-    }
-  }
-
-  // 通知方法
-  private notifyPlayListeners(isPlaying: boolean): void {
-    this.playListeners.forEach(listener => listener(isPlaying));
-  }
-
-  private notifyProgressListeners(progress: number, duration: number): void {
-    this.progressListeners.forEach(listener => listener(progress, duration));
-  }
-
-  private notifySongChangeListeners(song: SongInfo, index: number): void {
-    this.songChangeListeners.forEach(listener => listener(song, index));
-  }
-
-  private notifyStateChangeListeners(state: PlayerState): void {
-    this.stateChangeListeners.forEach(listener => listener(state));
-  }
-
-  /**
-   * 清理资源
-   */
-  async cleanup(): Promise<void> {
     try {
-      await this.stop();
-      if (this.audioPlayer) {
-        this.audioPlayer.release();
-        this.audioPlayer = null;
+      const result = await ApiService.getSongUrl(track.id, this.quality);
+      const data = result.data;
+      if (data && data.length > 0) {
+        const url = data[0].url;
+        if (url) {
+          track.url = url;
+          this.updateTrackInList(track);
+        }
       }
-      
-      // 清空所有监听器
-      this.playListeners = [];
-      this.progressListeners = [];
-      this.songChangeListeners = [];
-      this.stateChangeListeners = [];
-      
-      // 重置状态
-      this.currentSong = null;
-      this.playlist = [];
-      this.currentIndex = 0;
-      this.playerState = PlayerState.STOPPED;
-      this.progress = 0;
-      this.duration = 0;
-      
     } catch (error) {
-      console.error('清理音频管理器资源失败:', error);
+      console.error('获取播放地址失败:', JSON.stringify(error));
     }
+  }
+
+  private handlePlayEnd(): void {
+    if (this.playMode === PlayMode.SINGLE) {
+      this.seekTo(0);
+      this.play();
+    } else {
+      this.next();
+    }
+  }
+
+  private persistTrackList(): void {
+    StorageUtil.putObject<TrackModel[]>('audio_track_list', this.trackList);
+    StorageUtil.putNumber('audio_current_index', this.currentIndex);
+  }
+
+  private notifyPlay(isPlaying: boolean): void {
+    this.playListeners.forEach((listener: PlayStatusListener) => {
+      listener(isPlaying);
+    });
+  }
+
+  private notifyProgress(currentTime: number, duration: number): void {
+    this.progressListeners.forEach((listener: ProgressListener) => {
+      listener(currentTime, duration);
+    });
+  }
+
+  private notifyTrack(track: TrackModel, index: number): void {
+    this.trackListeners.forEach((listener: TrackChangeListener) => {
+      listener(track, index);
+    });
+  }
+
+  private notifyState(state: PlayerState): void {
+    this.stateListeners.forEach((listener: StateListener) => {
+      listener(state);
+    });
   }
 }

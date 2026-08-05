@@ -1,353 +1,349 @@
 /**
- * 用户页面 - UserPage
- * 对应小程序 pages/user/user
+ * 我的（用户信息栏 + 功能列表）
  */
-
-import router from '@ohos.router'
-import { GlobalDataManager } from '../../utils/GlobalDataManager'
-import { ThemeUtil, ThemeType } from '../../utils/ThemeUtil'
-import { StyleUtil } from '../../utils/StyleUtil'
-import { UserInfo } from '../../types/common'
+import { NavUtil } from '../../utils/NavUtil';
+import { ApiService } from '../../api/ApiService';
+import { GlobalDataManager } from '../../utils/GlobalDataManager';
+import { ThemeUtil, ThemeType } from '../../utils/ThemeUtil';
+import { UserInfo } from '../../types/common';
+import { TabManager } from '../../utils/TabManager';
 
 @Component
 export struct UserPage {
-  @State isLoggedIn: boolean = false
-  @State userInfo: UserInfo = {
-    username: '',
-    avatarUrl: '',
-    userAvatar: '',
-    email: '',
-    phone: ''
-  }
+  @State isLoggedIn: boolean = false;
+  @State userInfo: UserInfo | null = null;
+  @State themeRefresh: number = 0;
+  @State showThemeDialog: boolean = false;
 
-  private globalDataManager: GlobalDataManager = GlobalDataManager.getInstance()
-
-  /**
-   * 检查登录状态
-   */
-  private async checkLoginStatus(): Promise<void> {
-    try {
-      const isValid = await this.globalDataManager.checkLoginStatus()
-      this.isLoggedIn = isValid
-      
-      if (isValid) {
-        this.fetchUserProfile()
-      } else {
-        // 确保状态被正确重置为未登录
-        this.userInfo = {
-          username: '',
-          avatarUrl: '',
-          userAvatar: '',
-          email: '',
-          phone: ''
-        }
-      }
-    } catch (error) {
-      console.error('检查登录状态失败:', error)
-      this.isLoggedIn = false
+  private globalData: GlobalDataManager = GlobalDataManager.getInstance();
+  private tabListener: (index: number) => void = (index: number) => {
+    if (index === 2) {
+      this.checkLoginStatus();
     }
-  }
-
-  /**
-   * 获取用户信息
-   */
-  private async fetchUserProfile(): Promise<void> {
-    try {
-      // 先检查全局用户信息是否存在
-      const savedUserInfo = this.globalDataManager.getUserInfo()
-      if (savedUserInfo) {
-        this.userInfo = savedUserInfo
-        return
-      }
-
-      // TODO: 调用API获取用户信息
-      // const response: ApiResponse = await this.httpUtil.get('/user/getUserInfo')
-      // if (response.success || response.code === 0) {
-      //   const userData = response.data || response
-      //   this.userInfo = userData
-      //   this.globalDataManager.setUserInfo(userData)
-      // }
-
-      // 模拟数据
-      this.userInfo = {
-        username: '测试用户',
-        avatarUrl: '/assets/images/default-avatar.png',
-        userAvatar: '/assets/images/default-avatar.png',
-        email: 'test@example.com',
-        phone: '13800138000'
-      }
-    } catch (error) {
-      console.error('获取用户信息失败:', error)
-    }
-  }
-
-  /**
-   * 跳转到登录页面
-   */
-  private goToLogin(): void {
-    router.pushUrl({ url: '/pages/Login/LoginPage' })
-  }
-
-  /**
-   * 导航到编辑个人信息页面
-   */
-  private navigateToEdit(): void {
-    if (!this.isLoggedIn) {
-      this.goToLogin()
-      return
-    }
-    router.pushUrl({ url: '/pages/User/UserEditPage' })
-  }
-
-  /**
-   * 跳转到最近播放页面
-   */
-  private goToRecent(): void {
-    if (!this.isLoggedIn) {
-      this.goToLogin()
-      return
-    }
-    router.pushUrl({ url: '/pages/RecentPlay/RecentPlayPage' })
-  }
-
-  /**
-   * 跳转到我的歌单页面
-   */
-  private goToPlaylists(): void {
-    if (!this.isLoggedIn) {
-      this.goToLogin()
-      return
-    }
-    router.pushUrl({ url: '/pages/MyPlaylists/MyPlaylistsPage' })
-  }
-
-  /**
-   * 跳转到我的喜欢页面
-   */
-  private goToFavorites(): void {
-    if (!this.isLoggedIn) {
-      this.goToLogin()
-      return
-    }
-    router.pushUrl({ url: '/pages/MyFavorites/MyFavoritesPage' })
-  }
-
-  /**
-   * 退出登录
-   */
-  private handleLogout(): void {
-    // TODO: 实现确认对话框
-    try {
-      // 清除登录状态和用户信息
-      this.globalDataManager.clearUserInfo()
-      this.globalDataManager.clearToken()
-      
-      // 刷新页面以显示未登录状态
-      this.isLoggedIn = false
-      this.userInfo = {
-        username: '',
-        avatarUrl: '',
-        userAvatar: '',
-        email: '',
-        phone: ''
-      }
-
-      // TODO: 显示成功提示
-      console.log('已退出登录')
-    } catch (error) {
-      console.error('退出登录失败:', error)
-    }
-  }
+  };
+  private themeListener: (theme: ThemeType) => void = (theme: ThemeType) => {
+    this.themeRefresh++;
+  };
 
   aboutToAppear(): void {
-    this.checkLoginStatus()
-    // 初始化样式系统
-    StyleUtil.init()
+    this.checkLoginStatus();
+    TabManager.onTabChange(this.tabListener);
+    ThemeUtil.addThemeChangeListener(this.themeListener);
+  }
+
+  aboutToDisappear(): void {
+    TabManager.offTabChange(this.tabListener);
+    ThemeUtil.removeThemeChangeListener(this.themeListener);
+  }
+
+  private async checkLoginStatus(): Promise<void> {
+    this.isLoggedIn = this.globalData.getIsLoggedIn();
+    if (this.isLoggedIn) {
+      this.userInfo = this.globalData.getUserInfo();
+      const valid = await this.globalData.checkLoginStatus();
+      this.isLoggedIn = valid;
+      this.userInfo = this.globalData.getUserInfo();
+    } else {
+      this.userInfo = null;
+    }
+  }
+
+  private goToLogin(): void {
+    NavUtil.push('pages/Login/LoginPage');
+  }
+
+  private goToEdit(): void {
+    if (!this.isLoggedIn) {
+      this.goToLogin();
+      return;
+    }
+    NavUtil.push('pages/User/UserEditPage');
+  }
+
+  private goToRecent(): void {
+    if (!this.isLoggedIn) {
+      this.goToLogin();
+      return;
+    }
+    NavUtil.push('pages/RecentPlay/RecentPlayPage');
+  }
+
+  private goToPlaylists(): void {
+    if (!this.isLoggedIn) {
+      this.goToLogin();
+      return;
+    }
+    NavUtil.push('pages/Playlist/PlaylistListPage');
+  }
+
+  private goToFavorites(): void {
+    if (!this.isLoggedIn) {
+      this.goToLogin();
+      return;
+    }
+    NavUtil.push('pages/MyFavorites/MyFavoritesPage');
+  }
+
+  private goToFeedback(): void {
+    NavUtil.push('pages/User/FeedbackPage');
+  }
+
+  private goToServerSettings(): void {
+    NavUtil.push('pages/User/ServerSettingsPage');
+  }
+
+  private goToTheme(): void {
+    this.showThemeDialog = true;
+  }
+
+  private async applyTheme(theme: ThemeType): Promise<void> {
+    this.showThemeDialog = false;
+    await ThemeUtil.setTheme(theme);
+  }
+
+  private handleLogout(): void {
+    this.getUIContext().showAlertDialog({
+      title: '确认退出',
+      message: '确定要退出登录吗？',
+      autoCancel: true,
+      alignment: DialogAlignment.Center,
+      primaryButton: {
+        value: '取消',
+        action: () => {
+        }
+      },
+      secondaryButton: {
+        value: '退出',
+        fontColor: ThemeUtil.getColor('error'),
+        action: () => {
+          this.doLogout();
+        }
+      }
+    });
+  }
+
+  private async doLogout(): Promise<void> {
+    try {
+      await ApiService.logout();
+    } catch (error) {
+      console.warn('退出接口调用失败，继续清理本地状态');
+    }
+    await this.globalData.clearLoginStatus();
+    this.isLoggedIn = false;
+    this.userInfo = null;
   }
 
   build() {
-    Column() {
-      // 用户信息区域
-      if (!this.isLoggedIn) {
-        // 未登录状态
-        this.buildUnloggedInView()
-      } else {
-        // 已登录状态
-        this.buildLoggedInView()
-      }
+    Stack() {
+      Column() {
+        Scroll() {
+          Column() {
+            // 顶部用户信息栏
+            this.buildUserCard()
 
-      Blank()
+            // 功能列表
+            Column() {
+              this.buildMenuEntry($r('app.media.history'), '最近播放', () => this.goToRecent())
+              this.buildMenuEntry($r('app.media.playlist'), '我的歌单', () => this.goToPlaylists())
+              this.buildMenuEntry($r('app.media.like'), '我的喜欢', () => this.goToFavorites())
+            }
+            .width('100%')
+            .backgroundColor(ThemeUtil.getColor('surface'))
+            .borderRadius(ThemeUtil.getBorderRadius('lg'))
+            .margin({ bottom: ThemeUtil.getSpacing('sm') })
+
+            Column() {
+              this.buildMenuEntry($r('app.media.loop'), '主题设置', () => this.goToTheme())
+              this.buildMenuEntry($r('app.media.comment'), '意见反馈', () => this.goToFeedback())
+              this.buildMenuEntry($r('app.media.lock'), '服务器设置', () => this.goToServerSettings())
+            }
+            .width('100%')
+            .backgroundColor(ThemeUtil.getColor('surface'))
+            .borderRadius(ThemeUtil.getBorderRadius('lg'))
+            .margin({ bottom: ThemeUtil.getSpacing('sm') })
+
+            if (this.isLoggedIn) {
+              Button('退出登录')
+                .width('100%')
+                .height(48)
+                .fontSize(ThemeUtil.getFontSize('md'))
+                .fontColor(ThemeUtil.getColor('error'))
+                .backgroundColor(ThemeUtil.getColor('surface'))
+                .borderWidth(1)
+                .borderColor(ThemeUtil.getColor('error'))
+                .borderRadius(ThemeUtil.getBorderRadius('lg'))
+                .onClick(() => this.handleLogout())
+                .margin({ top: ThemeUtil.getSpacing('md') })
+            }
+          }
+          .width('100%')
+          .padding({ left: ThemeUtil.getSpacing('md'), right: ThemeUtil.getSpacing('md'), top: 8, bottom: ThemeUtil.getSpacing('md') })
+        }
+        .layoutWeight(1)
+        .scrollBar(BarState.Off)
+      }
+      .width('100%')
+      .height('100%')
+
+      // 主题设置：居中弹窗卡片（白色 / 黑色）
+      if (this.showThemeDialog) {
+        this.buildThemeDialog()
+      }
     }
     .width('100%')
     .height('100%')
     .backgroundColor(ThemeUtil.getColor('background'))
+    .opacity(this.themeRefresh >= 0 ? 1 : 1)
   }
 
-  /**
-   * 构建未登录状态视图
-   */
   @Builder
-  private buildUnloggedInView() {
+  private buildThemeDialog() {
     Column() {
-      // 头像容器
       Column() {
-        Image($r('app.media.logo'))
-          .width(80)
-          .height(80)
-          .borderRadius(ThemeUtil.getBorderRadius('full'))
-          .backgroundColor(ThemeUtil.getColor('surface'))
-      }
-      .width(100)
-      .height(100)
-      .margin({ top: ThemeUtil.getSpacing('xl'), bottom: ThemeUtil.getSpacing('lg') })
-
-      // 登录按钮
-      Button('登录/注册')
-        .width(200)
-        .height(48)
-        .fontSize(ThemeUtil.getFontSize('md'))
-        .fontColor(ThemeUtil.getColor('onPrimary'))
-        .backgroundColor(ThemeUtil.getColor('primary'))
-        .borderRadius(ThemeUtil.getBorderRadius('lg'))
-        .onClick(() => this.goToLogin())
-        .margin({ bottom: ThemeUtil.getSpacing('md') })
-
-      // 提示文字
-      Text('登录后可体验更多功能')
-        .fontSize(ThemeUtil.getFontSize('sm'))
-        .fontColor(ThemeUtil.getColor('textHint'))
-    }
-    .width('100%')
-    .height('100%')
-    .backgroundColor(ThemeUtil.getColor('background'))
-  }
-
-  /**
-   * 构建已登录状态视图
-   */
-  @Builder
-  private buildLoggedInView() {
-    Column() {
-      // 顶部用户信息区
-      this.buildProfileHeader()
-
-      // 我的音乐功能区
-      this.buildMusicSection()
-
-      // 退出登录按钮
-      this.buildLogoutButton()
-    }
-    .width('100%')
-    .backgroundColor(ThemeUtil.getColor('background'))
-  }
-
-  /**
-   * 构建个人资料头部
-   */
-  @Builder
-  private buildProfileHeader() {
-    Row() {
-      // 头像
-      Column() {
-        Image(this.userInfo.userAvatar || this.userInfo.avatarUrl || $r('app.media.default-avatar'))
-          .width(60)
-          .height(60)
-          .borderRadius(ThemeUtil.getBorderRadius('full'))
-          .backgroundColor(ThemeUtil.getColor('surface'))
-      }
-      .width(80)
-      .height(80)
-      .margin({ right: ThemeUtil.getSpacing('md') })
-
-      // 用户信息
-      Column() {
-        Text(this.userInfo.username || '未知用户')
+        Text('主题设置')
           .fontSize(ThemeUtil.getFontSize('lg'))
           .fontWeight(FontWeight.Bold)
           .fontColor(ThemeUtil.getColor('textPrimary'))
-          .margin({ bottom: ThemeUtil.getSpacing('xs') })
+          .margin({ top: ThemeUtil.getSpacing('lg'), bottom: ThemeUtil.getSpacing('md') })
 
-        Text('点击编辑个人信息')
-          .fontSize(ThemeUtil.getFontSize('xs'))
+        Row() {
+          this.buildThemeCard('白色', '白天模式', ThemeType.LIGHT)
+          this.buildThemeCard('黑色', '深色模式', ThemeType.DARK)
+        }
+        .width('100%')
+        .padding({ left: ThemeUtil.getSpacing('lg'), right: ThemeUtil.getSpacing('lg') })
+
+        Text('取消')
+          .fontSize(ThemeUtil.getFontSize('sm'))
           .fontColor(ThemeUtil.getColor('textHint'))
+          .margin({ top: ThemeUtil.getSpacing('lg'), bottom: ThemeUtil.getSpacing('lg') })
+          .onClick(() => this.showThemeDialog = false)
       }
-      .alignItems(HorizontalAlign.Start)
-      .layoutWeight(1)
-
-      // 箭头
-      Image($r('app.media.arrow-right'))
-        .width(20)
-        .height(20)
+      .width('86%')
+      .backgroundColor(ThemeUtil.getColor('surface'))
+      .borderRadius(ThemeUtil.getBorderRadius('xl'))
+      .shadow({ radius: 16, color: 'rgba(0, 0, 0, 0.25)' })
+      .alignItems(HorizontalAlign.Center)
     }
     .width('100%')
-    .height(100)
-    .padding(ThemeUtil.getSpacing('md'))
-    .backgroundColor(ThemeUtil.getColor('surface'))
-    .margin({ bottom: ThemeUtil.getSpacing('sm') })
-    .onClick(() => this.navigateToEdit())
+    .height('100%')
+    .backgroundColor(ThemeUtil.getColor('overlay'))
+    .justifyContent(FlexAlign.Center)
+    .onClick(() => this.showThemeDialog = false)
   }
 
-  /**
-   * 构建音乐功能区
-   */
   @Builder
-  private buildMusicSection() {
+  private buildThemeCard(name: string, desc: string, theme: ThemeType) {
     Column() {
-      // 最近播放
-      this.buildMusicItem($r('app.media.history'), '最近播放', () => this.goToRecent())
-
-      // 我的歌单
-      this.buildMusicItem($r('app.media.playlist'), '我的歌单', () => this.goToPlaylists())
-
-      // 我的喜欢
-      this.buildMusicItem($r('app.media.like-active'), '我的喜欢', () => this.goToFavorites())
+      Circle()
+        .width(48)
+        .height(48)
+        .fill(theme === ThemeType.DARK ? '#1E1E1E' : '#FFFFFF')
+        .stroke(theme === ThemeType.DARK ? '#3A3A3A' : '#D0D0D0')
+        .strokeWidth(2)
+        .margin({ bottom: ThemeUtil.getSpacing('sm') })
+      Text(name)
+        .fontSize(ThemeUtil.getFontSize('md'))
+        .fontWeight(FontWeight.Bold)
+        .fontColor(ThemeUtil.getColor('textPrimary'))
+      Text(desc)
+        .fontSize(ThemeUtil.getFontSize('xs'))
+        .fontColor(ThemeUtil.getColor('textHint'))
+        .margin({ top: 2 })
     }
-    .width('100%')
-    .backgroundColor(ThemeUtil.getColor('surface'))
-    .margin({ bottom: ThemeUtil.getSpacing('sm') })
+    .layoutWeight(1)
+    .padding(ThemeUtil.getSpacing('md'))
+    .backgroundColor(ThemeUtil.getColor('background'))
+    .borderRadius(ThemeUtil.getBorderRadius('lg'))
+    .margin({ right: ThemeUtil.getSpacing('sm') })
+    .onClick(() => this.applyTheme(theme))
   }
 
-  /**
-   * 构建音乐功能项
-   */
   @Builder
-  private buildMusicItem(icon: Resource, text: string, onClick: () => void) {
+  private buildUserCard() {
+    Row() {
+      Image(this.isLoggedIn && this.userInfo ?
+        (this.userInfo.avatarUrl || this.userInfo.userAvatar || $r('app.media.default_avatar')) :
+        $r('app.media.default_avatar'))
+        .width(64)
+        .height(64)
+        .borderRadius(ThemeUtil.getBorderRadius('full'))
+        .objectFit(ImageFit.Cover)
+        .backgroundColor(ThemeUtil.getColor('surface'))
+        .margin({ right: ThemeUtil.getSpacing('md') })
+
+      Column() {
+        if (this.isLoggedIn && this.userInfo) {
+          Text(this.userInfo.username)
+            .fontSize(ThemeUtil.getFontSize('lg'))
+            .fontWeight(FontWeight.Bold)
+            .fontColor(ThemeUtil.getColor('textPrimary'))
+          Text(this.userInfo.email)
+            .fontSize(ThemeUtil.getFontSize('xs'))
+            .fontColor(ThemeUtil.getColor('textHint'))
+            .margin({ top: 4 })
+        } else {
+          Text('未登录')
+            .fontSize(ThemeUtil.getFontSize('lg'))
+            .fontWeight(FontWeight.Bold)
+            .fontColor(ThemeUtil.getColor('textPrimary'))
+          Text('登录后可收藏歌曲、歌单，同步你的音乐')
+            .fontSize(ThemeUtil.getFontSize('xs'))
+            .fontColor(ThemeUtil.getColor('textHint'))
+            .margin({ top: 4 })
+        }
+      }
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Start)
+
+      if (this.isLoggedIn) {
+        Column() {
+          Text('个人中心')
+            .fontSize(ThemeUtil.getFontSize('xs'))
+            .fontColor(ThemeUtil.getColor('primary'))
+          Image($r('app.media.arrow_right'))
+            .width(16)
+            .height(16)
+            .margin({ top: 2 })
+        }
+        .onClick(() => this.goToEdit())
+      } else {
+        Button('登录/注册')
+          .width(96)
+          .height(36)
+          .fontSize(ThemeUtil.getFontSize('sm'))
+          .fontColor(ThemeUtil.getColor('onPrimary'))
+          .backgroundColor(ThemeUtil.getColor('primary'))
+          .borderRadius(ThemeUtil.getBorderRadius('full'))
+          .onClick(() => this.goToLogin())
+      }
+    }
+    .width('100%')
+    .padding(ThemeUtil.getSpacing('lg'))
+    .backgroundColor(ThemeUtil.getColor('surface'))
+    .borderRadius(ThemeUtil.getBorderRadius('lg'))
+    .shadow({ radius: 8, color: 'rgba(0, 0, 0, 0.06)', offsetY: 3 })
+    .margin({ bottom: ThemeUtil.getSpacing('md') })
+  }
+
+  @Builder
+  private buildMenuEntry(icon: Resource, text: string, onClick: () => void) {
     Row() {
       Image(icon)
         .width(24)
         .height(24)
         .margin({ right: ThemeUtil.getSpacing('md') })
-
       Text(text)
         .fontSize(ThemeUtil.getFontSize('md'))
         .fontColor(ThemeUtil.getColor('textPrimary'))
         .layoutWeight(1)
-
-      Image($r('app.media.arrow-right'))
+      Image($r('app.media.arrow_right'))
         .width(20)
         .height(20)
     }
     .width('100%')
-    .height(60)
+    .height(56)
     .padding({ left: ThemeUtil.getSpacing('md'), right: ThemeUtil.getSpacing('md') })
-    .onClick(onClick)
-  }
-
-  /**
-   * 构建退出登录按钮
-   */
-  @Builder
-  private buildLogoutButton() {
-    Button('退出登录')
-      .width('90%')
-      .height(48)
-      .fontSize(ThemeUtil.getFontSize('md'))
-      .fontColor(ThemeUtil.getColor('error'))
-      .backgroundColor(ThemeUtil.getColor('surface'))
-      .borderWidth(1)
-      .borderColor(ThemeUtil.getColor('error'))
-      .borderRadius(ThemeUtil.getBorderRadius('lg'))
-      .onClick(() => this.handleLogout())
-      .margin({ top: ThemeUtil.getSpacing('xl') })
+    .onClick(() => onClick())
   }
 }

@@ -1,13 +1,21 @@
 {
   "src": [
-    "pages/Index/IndexPage",
-    "pages/User/UserPage",
+    "pages/MainTabs/MainTabs",
     "pages/Login/LoginPage",
     "pages/Register/RegisterPage",
-    "pages/Library/LibraryPage",
+    "pages/User/ResetPasswordPage",
+    "pages/User/UserEditPage",
+    "pages/User/FeedbackPage",
+    "pages/User/ServerSettingsPage",
+    "pages/Search/SearchPage",
     "pages/MyFavorites/MyFavoritesPage",
-    "pages/MyPlaylists/MyPlaylistsPage",
     "pages/RecentPlay/RecentPlayPage",
-    "pages/PlaylistDetail/PlaylistDetailPage"
+    "pages/PlaylistDetail/PlaylistDetailPage",
+    "pages/Artist/ArtistListPage",
+    "pages/Artist/ArtistDetailPage",
+    "pages/Playlist/PlaylistListPage",
+    "pages/PlayDetail/PlayDetailPage",
+    "pages/PlayDetail/SongCommentPage",
+    "pages/Rank/RankPage"
   ]
 }

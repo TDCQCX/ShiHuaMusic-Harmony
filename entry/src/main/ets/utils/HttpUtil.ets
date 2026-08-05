@@ -1,315 +1,203 @@
-// HTTP网络请求工具类 - 适配鸿蒙HarmonyOS
+/**
+ * 网络请求工具（ArkTS 规范）
+ * 统一 baseUrl、Token 注入、401 处理、超时控制
+ */
 import http from '@ohos.net.http';
-import connection from '@ohos.net.connection';
-import prompt from '@ohos.promptAction';
-import { RequestConfig, ApiResponse, RequestStats } from '../types/common';
+import { StorageUtil } from './StorageUtil';
+import { ApiResult, RequestConfig } from '../types/common';
 
 export class HttpUtil {
-  private static baseUrl: string = 'http://192.168.66.241:8080';
-  private static imageBaseUrl: string = 'http://192.168.66.241:9000';
+  private static baseUrl: string = 'http://127.0.0.1:8080';
+  private static imageBaseUrl: string = 'http://127.0.0.1:9000';
   private static token: string = '';
-  private static readonly DEFAULT_TIMEOUT: number = 15000; // 15秒超时
-  private static readonly RETRY_COUNT: number = 3; // 重试次数
+  private static readonly DEFAULT_TIMEOUT: number = 15000;
 
   /**
-   * 初始化网络状态监听
+   * 启动时读取保存的服务器配置
    */
-  static initNetworkListener(): void {
-    try {
-      const connectionConfig = connection.getConnectionPropertiesSync();
-      console.log('初始网络状态:', connectionConfig ? '已连接' : '未连接');
-      
-      // 监听网络状态变化
-      connection.on('netConnectionChange', (data: connection.NetConnectionChange) => {
-        console.log('网络状态变化:', data.isAvailable ? '网络已连接' : '网络已断开');
-      });
-    } catch (error) {
-      console.warn('获取网络状态失败:', error);
+  static async loadServerConfig(): Promise<void> {
+    const savedBaseUrl = await StorageUtil.getString('server_base_url', '');
+    if (savedBaseUrl) {
+      HttpUtil.baseUrl = savedBaseUrl;
+    }
+    const savedImageBaseUrl = await StorageUtil.getString('server_image_base_url', '');
+    if (savedImageBaseUrl) {
+      HttpUtil.imageBaseUrl = savedImageBaseUrl;
     }
   }
 
   /**
-   * 检查网络状态
+   * 保存服务器配置并立即生效
    */
-  private static checkNetworkStatus(): boolean {
-    try {
-      const connectionConfig = connection.getConnectionPropertiesSync();
-      return connectionConfig !== null;
-    } catch (error) {
-      console.warn('网络状态检查失败:', error);
-      return true; // 默认假设网络可用
-    }
-  }
-
-  /**
-   * 设置基础URL
-   * @param baseUrl API基础URL
-   */
-  static setBaseUrl(baseUrl: string): void {
+  static async saveServerConfig(baseUrl: string, imageBaseUrl: string): Promise<void> {
     HttpUtil.baseUrl = baseUrl;
-  }
-
-  /**
-   * 设置图片服务器URL
-   * @param imageBaseUrl 图片服务器URL
-   */
-  static setImageBaseUrl(imageBaseUrl: string): void {
     HttpUtil.imageBaseUrl = imageBaseUrl;
+    await StorageUtil.putString('server_base_url', baseUrl);
+    await StorageUtil.putString('server_image_base_url', imageBaseUrl);
   }
 
-  /**
-   * 设置认证Token
-   * @param token 认证令牌
-   */
+  static setBaseUrl(url: string): void {
+    HttpUtil.baseUrl = url;
+  }
+
+  static getBaseUrl(): string {
+    return HttpUtil.baseUrl;
+  }
+
+  static setImageBaseUrl(url: string): void {
+    HttpUtil.imageBaseUrl = url;
+  }
+
+  static getImageBaseUrl(): string {
+    return HttpUtil.imageBaseUrl;
+  }
+
   static setToken(token: string): void {
     HttpUtil.token = token;
   }
 
-  /**
-   * 清除Token
-   */
+  static getToken(): string {
+    return HttpUtil.token;
+  }
+
   static clearToken(): void {
     HttpUtil.token = '';
   }
 
   /**
-   * 获取当前Token
+   * 统一请求入口
    */
-  static getToken(): string {
-    return HttpUtil.token;
-  }
-
-  /**
-   * 网络请求封装 - 带重试机制
-   * @param config 请求配置
-   * @returns Promise<ApiResponse>
-   */
-  static async request<T>(config: RequestConfig, retryCount: number = 0): Promise<ApiResponse<T>> {
-    // 检查网络状态
-    if (!HttpUtil.checkNetworkStatus()) {
-      prompt.showToast({
-        message: '网络连接不可用，请检查网络设置',
-        duration: 3000
-      });
-      throw new Error('网络不可用');
-    }
-
+  static async request<T>(config: RequestConfig): Promise<ApiResult<T>> {
     const httpRequest = http.createHttp();
-    
     try {
       const fullUrl = HttpUtil.buildFullUrl(config.url, config.params);
       const headers = HttpUtil.buildHeaders(config.headers);
-      
-      // 显示加载提示
-      if (config.showLoading !== false) {
-        prompt.showLoading({
-          message: '加载中...',
-          mask: true
-        });
+      if (config.method.toUpperCase() === 'PATCH') {
+        headers['X-HTTP-Method-Override'] = 'PATCH';
       }
-
-      console.log(`[HTTP] 发送请求 (第${retryCount + 1}次尝试):`, fullUrl, config.method || 'GET');
-      
-      const httpRequestOptions: http.HttpRequestOptions = {
-        method: HttpUtil.mapHttpMethod(config.method || 'GET'),
+      const options: http.HttpRequestOptions = {
+        method: HttpUtil.mapMethod(config.method),
         header: headers,
-        extraData: config.data || {},
+        extraData: config.data,
         expectDataType: http.HttpDataType.STRING,
-        usingCache: config.useCache || false,
-        priority: 1,
-        connectTimeout: config.timeout || HttpUtil.DEFAULT_TIMEOUT,
-        readTimeout: config.timeout || HttpUtil.DEFAULT_TIMEOUT
+        connectTimeout: config.timeout ?? HttpUtil.DEFAULT_TIMEOUT,
+        readTimeout: config.timeout ?? HttpUtil.DEFAULT_TIMEOUT
       };
-
-      const response = await httpRequest.request(fullUrl, httpRequestOptions);
-
-      console.log(`[HTTP] 请求响应 (状态码: ${response.responseCode}):`, response.result);
-      
-      // 隐藏加载提示
-      if (config.showLoading !== false) {
-        prompt.hideLoading();
+      const response = await httpRequest.request(fullUrl, options);
+      if (response.responseCode === 401) {
+        HttpUtil.handleUnauthorized();
+        throw new Error('登录已过期，请重新登录');
       }
-
-      // 处理HTTP状态码
-      if (response.responseCode >= 200 && response.responseCode < 300) {
-        const result = JSON.parse(response.result as string);
-        
-        // 处理401错误
-        if (response.responseCode === 401 || result.code === 401) {
-          HttpUtil.handleUnauthorized();
-          throw new Error('登录已过期，请重新登录');
-        }
-        
-        return result;
-      } else if (response.responseCode >= 500 && retryCount < HttpUtil.RETRY_COUNT) {
-        // 服务器错误且可重试
-        console.warn(`[HTTP] 服务器错误 ${response.responseCode}，进行第${retryCount + 1}次重试...`);
-        await HttpUtil.delay(1000 * (retryCount + 1)); // 指数退避
-        return HttpUtil.request<T>(config, retryCount + 1);
-      } else {
-        throw new Error(`请求失败: ${response.responseCode}`);
+      const resultStr = response.result as string;
+      const result = JSON.parse(resultStr) as ApiResult<T>;
+      if (result.code === 401) {
+        HttpUtil.handleUnauthorized();
+        throw new Error('登录已过期，请重新登录');
       }
+      return result;
     } catch (error) {
-      console.error(`[HTTP] 网络请求失败 (第${retryCount + 1}次尝试):`, error);
-      
-      // 隐藏加载提示
-      if (config.showLoading !== false) {
-        prompt.hideLoading();
-      }
-      
-      // 网络错误且可重试
-      if ((error.message.includes('Network Error') || error.message.includes('connection')) && 
-          retryCount < HttpUtil.RETRY_COUNT) {
-        console.warn(`[HTTP] 网络错误，进行第${retryCount + 1}次重试...`);
-        await HttpUtil.delay(1000 * (retryCount + 1));
-        return HttpUtil.request<T>(config, retryCount + 1);
-      }
-      
-      const errorMessage = error.message || '网络请求失败';
-      prompt.showToast({
-        message: HttpUtil.getErrorMessage(errorMessage),
-        duration: 2000
-      });
-      
-      throw error;
+      const err = error as Error;
+      throw new Error(HttpUtil.getErrorMessage(err.message));
     } finally {
       httpRequest.destroy();
     }
   }
 
-  /**
-   * 延迟函数
-   * @param ms 延迟毫秒数
-   */
-  private static delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
-  /**
-   * 获取友好的错误信息
-   * @param errorMessage 原始错误信息
-   */
-  private static getErrorMessage(errorMessage: string): string {
-    if (errorMessage.includes('Network Error')) {
-      return '网络连接失败，请检查网络设置';
-    } else if (errorMessage.includes('timeout')) {
-      return '请求超时，请稍后重试';
-    } else if (errorMessage.includes('401')) {
-      return '登录已过期，请重新登录';
-    } else if (errorMessage.includes('403')) {
-      return '没有权限访问该资源';
-    } else if (errorMessage.includes('404')) {
-      return '请求的资源不存在';
-    } else if (errorMessage.includes('500')) {
-      return '服务器内部错误，请稍后重试';
-    } else {
-      return errorMessage;
-    }
-  }
-
-  /**
-   * GET请求
-   * @param url 请求URL
-   * @param params 查询参数
-   * @param showLoading 是否显示加载提示
-   */
-  static async get<T>(url: string, params?: Record<string, string | number>, showLoading: boolean = true): Promise<ApiResponse<T>> {
-    return HttpUtil.request<T>({
-      url,
+  static async get<T>(url: string, params?: Record<string, string>): Promise<ApiResult<T>> {
+    const config: RequestConfig = {
+      url: url,
       method: 'GET',
-      params,
-      showLoading
-    });
+      params: params
+    };
+    return HttpUtil.request<T>(config);
   }
 
-  /**
-   * POST请求
-   * @param url 请求URL
-   * @param data 请求数据
-   * @param showLoading 是否显示加载提示
-   */
-  static async post<T>(url: string, data?: Object, showLoading: boolean = true): Promise<ApiResponse<T>> {
-    return HttpUtil.request<T>({
-      url,
+  static async post<T>(url: string, data?: object, params?: Record<string, string>): Promise<ApiResult<T>> {
+    const config: RequestConfig = {
+      url: url,
       method: 'POST',
-      data,
-      showLoading
-    });
+      data: data,
+      params: params
+    };
+    return HttpUtil.request<T>(config);
   }
 
-  /**
-   * PUT请求
-   * @param url 请求URL
-   * @param data 请求数据
-   */
-  static async put<T>(url: string, data?: Object): Promise<ApiResponse<T>> {
-    return HttpUtil.request<T>({
-      url,
+  static async put<T>(url: string, data?: object): Promise<ApiResult<T>> {
+    const config: RequestConfig = {
+      url: url,
       method: 'PUT',
-      data
-    });
+      data: data
+    };
+    return HttpUtil.request<T>(config);
+  }
+
+  static async patch<T>(url: string, data?: object): Promise<ApiResult<T>> {
+    const config: RequestConfig = {
+      url: url,
+      method: 'PATCH',
+      data: data
+    };
+    return HttpUtil.request<T>(config);
+  }
+
+  static async delete<T>(url: string, params?: Record<string, string>): Promise<ApiResult<T>> {
+    const config: RequestConfig = {
+      url: url,
+      method: 'DELETE',
+      params: params
+    };
+    return HttpUtil.request<T>(config);
   }
 
   /**
-   * DELETE请求
-   * @param url 请求URL
+   * 处理资源 URL（图片/音频）
+   * 后端返回完整地址（如 minIO）时原样使用；仅当接口返回相对路径时才拼接图片服务器地址
    */
-  static async delete<T>(url: string): Promise<ApiResponse<T>> {
-    return HttpUtil.request<T>({
-      url,
-      method: 'DELETE'
-    });
+  static processImageUrl(url: string): string {
+    if (!url) {
+      return '';
+    }
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    const cleanPath = url.startsWith('/') ? url : '/' + url;
+    return HttpUtil.imageBaseUrl + cleanPath;
   }
 
-  /**
-   * 构建完整URL
-   * @param url 相对URL
-   * @param params 查询参数
-   */
-  private static buildFullUrl(url: string, params?: Record<string, string | number>): string {
-    let fullUrl: string = `${HttpUtil.baseUrl}${url}`;
-    
+  private static buildFullUrl(url: string, params?: Record<string, string>): string {
+    let fullUrl: string = HttpUtil.baseUrl + url;
     if (params) {
-      const queryString = Object.keys(params)
-        .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(params[key] as string)}`)
-        .join('&');
-      
-      if (queryString) {
-        fullUrl += `?${queryString}`;
+      const keys = Object.keys(params);
+      if (keys.length > 0) {
+        const parts: string[] = [];
+        keys.forEach((key: string) => {
+          const value = params[key];
+          parts.push(encodeURIComponent(key) + '=' + encodeURIComponent(value.toString()));
+        });
+        fullUrl = fullUrl + '?' + parts.join('&');
       }
     }
-    
     return fullUrl;
   }
 
-  /**
-   * 构建请求头
-   * @param customHeaders 自定义请求头
-   */
   private static buildHeaders(customHeaders?: Record<string, string>): Record<string, string> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json'
     };
-
-    // 添加Token
+    if (customHeaders) {
+      const keys = Object.keys(customHeaders);
+      keys.forEach((key: string) => {
+        headers[key] = customHeaders[key];
+      });
+    }
     if (HttpUtil.token) {
-      const tokenValue: string = HttpUtil.token.startsWith('Bearer ') ? HttpUtil.token : `Bearer ${HttpUtil.token}`;
+      const tokenValue = HttpUtil.token.startsWith('Bearer ') ? HttpUtil.token : 'Bearer ' + HttpUtil.token;
       headers['Authorization'] = tokenValue;
     }
-
-    // 合并自定义请求头
-    if (customHeaders) {
-      Object.assign(headers, customHeaders);
-    }
-
     return headers;
   }
 
-  /**
-   * 映射HTTP方法
-   * @param method HTTP方法
-   */
-  private static mapHttpMethod(method: string): http.RequestMethod {
+  private static mapMethod(method: string): http.RequestMethod {
     switch (method.toUpperCase()) {
       case 'GET':
         return http.RequestMethod.GET;
@@ -317,6 +205,9 @@ export class HttpUtil {
         return http.RequestMethod.POST;
       case 'PUT':
         return http.RequestMethod.PUT;
+      case 'PATCH':
+        // HarmonyOS http 不支持 PATCH，映射为 POST + 方法覆盖头
+        return http.RequestMethod.POST;
       case 'DELETE':
         return http.RequestMethod.DELETE;
       default:
@@ -324,174 +215,20 @@ export class HttpUtil {
     }
   }
 
-  /**
-   * 处理未授权错误
-   */
   private static handleUnauthorized(): void {
     HttpUtil.clearToken();
-    // TODO: 跳转到登录页面或显示登录提示
   }
 
-  /**
-   * 文件上传
-   * @param url 上传URL
-   * @param filePath 文件路径
-   * @param fileName 文件名
-   * @param formData 表单数据
-   * @param progressCallback 进度回调
-   */
-  static async upload<T>(
-    url: string, 
-    filePath: string, 
-    fileName: string = 'file',
-    formData?: Record<string, string>,
-    progressCallback?: (progress: number) => void
-  ): Promise<ApiResponse<T>> {
-    // 检查网络状态
-    if (!HttpUtil.checkNetworkStatus()) {
-      throw new Error('网络不可用');
+  private static getErrorMessage(message: string): string {
+    if (message.includes('401') || message.includes('登录已过期')) {
+      return '登录已过期，请重新登录';
     }
-
-    const httpRequest = http.createHttp();
-    
-    try {
-      const fullUrl = HttpUtil.buildFullUrl(url);
-      const headers = HttpUtil.buildHeaders();
-      
-      prompt.showLoading({
-        message: '上传中...',
-        mask: true
-      });
-
-      console.log('[HTTP] 开始上传文件:', filePath, '到', fullUrl);
-      
-      // 鸿蒙文件上传API实现
-      const uploadResponse = await httpRequest.request(fullUrl, {
-        method: http.RequestMethod.POST,
-        header: {
-          ...headers,
-          'Content-Type': 'multipart/form-data'
-        },
-        extraData: {
-          file: filePath,
-          fileName: fileName,
-          ...formData
-        },
-        expectDataType: http.HttpDataType.STRING,
-        connectTimeout: HttpUtil.DEFAULT_TIMEOUT,
-        readTimeout: HttpUtil.DEFAULT_TIMEOUT
-      });
-
-      console.log('[HTTP] 上传响应:', uploadResponse.responseCode);
-      
-      prompt.hideLoading();
-
-      if (uploadResponse.responseCode >= 200 && uploadResponse.responseCode < 300) {
-        const result = JSON.parse(uploadResponse.result as string);
-        return result;
-      } else {
-        throw new Error(`上传失败: ${uploadResponse.responseCode}`);
-      }
-    } catch (error) {
-      console.error('[HTTP] 文件上传失败:', error);
-      prompt.hideLoading();
-      
-      prompt.showToast({
-        message: '文件上传失败',
-        duration: 2000
-      });
-      
-      throw error;
-    } finally {
-      httpRequest.destroy();
+    if (message.includes('timeout')) {
+      return '请求超时，请稍后重试';
     }
-  }
-
-  /**
-   * 文件下载
-   * @param url 下载URL
-   * @param filePath 保存路径
-   * @param progressCallback 进度回调
-   */
-  static async download(
-    url: string, 
-    filePath: string,
-    progressCallback?: (progress: number) => void
-  ): Promise<void> {
-    // 检查网络状态
-    if (!HttpUtil.checkNetworkStatus()) {
-      throw new Error('网络不可用');
+    if (message.includes('网络不可用') || message.includes('Network')) {
+      return '网络连接失败，请检查网络设置';
     }
-
-    const httpRequest = http.createHttp();
-    
-    try {
-      console.log('[HTTP] 开始下载文件:', url, '保存到', filePath);
-      
-      const downloadResponse = await httpRequest.request(url, {
-        method: http.RequestMethod.GET,
-        expectDataType: http.HttpDataType.STRING,
-        usingCache: false,
-        connectTimeout: HttpUtil.DEFAULT_TIMEOUT,
-        readTimeout: HttpUtil.DEFAULT_TIMEOUT
-      });
-
-      console.log('[HTTP] 下载响应:', downloadResponse.responseCode);
-      
-      if (downloadResponse.responseCode >= 200 && downloadResponse.responseCode < 300) {
-        // TODO: 实现鸿蒙文件保存逻辑
-        // 需要使用文件管理API保存下载的内容
-        console.log('[HTTP] 文件下载完成:', filePath);
-        prompt.showToast({
-          message: '文件下载完成',
-          duration: 2000
-        });
-      } else {
-        throw new Error(`下载失败: ${downloadResponse.responseCode}`);
-      }
-    } catch (error) {
-      console.error('[HTTP] 文件下载失败:', error);
-      
-      prompt.showToast({
-        message: '文件下载失败',
-        duration: 2000
-      });
-      
-      throw error;
-    } finally {
-      httpRequest.destroy();
-    }
-  }
-
-  /**
-   * 处理图片URL，确保在鸿蒙应用中正常显示
-   * @param url 图片URL
-   */
-  static processImageUrl(url: string): string {
-    if (!url) return '';
-    
-    // 如果URL已经是完整URL，只提取路径部分
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      try {
-        const pathStartIndex: number = url.indexOf('/', url.indexOf('://') + 3);
-        const path: string = pathStartIndex !== -1 ? url.substring(pathStartIndex) : '/';
-        return `${HttpUtil.imageBaseUrl}${path}`;
-      } catch (e) {
-        console.warn('Failed to process URL:', url, e);
-        return url;
-      }
-    }
-    
-    // 否则拼接图片服务器地址
-    const cleanPath: string = url.startsWith('/') ? url : '/' + url;
-    return `${HttpUtil.imageBaseUrl}${cleanPath}`;
-  }
-
-  /**
-   * 获取网络请求统计信息
-   */
-  static getRequestStats(): RequestStats {
-    // 这里可以添加请求统计逻辑
-    return { success: 0, failed: 0, total: 0 } as RequestStats;
+    return message;
   }
 }
