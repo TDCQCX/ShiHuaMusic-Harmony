@@ -124,14 +124,12 @@ export struct BottomPlayer {
       if (this.likeStatus === 1) {
         const result = await ApiService.cancelCollectSong(songId);
         if (result.code === 0) {
-          track.likeStatus = 0;
-          this.likeStatus = 0;
+          this.audioManager.setLikeStatus(songId, 0);
         }
       } else {
         const result = await ApiService.collectSong(songId);
         if (result.code === 0) {
-          track.likeStatus = 1;
-          this.likeStatus = 1;
+          this.audioManager.setLikeStatus(songId, 1);
         }
       }
     } catch (error) {

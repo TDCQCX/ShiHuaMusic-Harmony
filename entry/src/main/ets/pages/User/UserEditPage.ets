@@ -89,45 +89,6 @@ struct UserEditPage {
     }
   }
 
-  private handleDelete(): void {
-    this.getUIContext().showAlertDialog({
-      title: '确认注销',
-      message: '注销账号后将无法恢复，确定要继续吗？',
-      autoCancel: true,
-      alignment: DialogAlignment.Center,
-      primaryButton: {
-        value: '取消',
-        action: () => {
-        }
-      },
-      secondaryButton: {
-        value: '注销',
-        fontColor: ThemeUtil.getColor('error'),
-        action: () => {
-          this.doDelete();
-        }
-      }
-    });
-  }
-
-  private async doDelete(): Promise<void> {
-    this.isLoading = true;
-    try {
-      const result = await ApiService.deleteAccount();
-      if (result.code === 0) {
-        await this.globalData.clearLoginStatus();
-        TabManager.setTab(0);
-        NavUtil.back();
-      } else {
-        this.errorMessage = result.message || '注销失败';
-      }
-    } catch (error) {
-      this.errorMessage = (error as Error).message;
-    } finally {
-      this.isLoading = false;
-    }
-  }
-
   private async selectAvatar(): Promise<void> {
     try {
       const photoPicker = new photoAccessHelper.PhotoViewPicker();
@@ -293,6 +254,8 @@ struct UserEditPage {
           .height(140)
           .justifyContent(FlexAlign.Center)
           .backgroundColor(ThemeUtil.getColor('surface'))
+          .borderRadius(ThemeUtil.getBorderRadius('lg'))
+          .shadow({ radius: 6, color: 'rgba(0, 0, 0, 0.06)', offsetY: 2 })
           .onClick(() => this.selectAvatar())
 
           Column() {
@@ -318,11 +281,13 @@ struct UserEditPage {
           }
           .width('100%')
           .backgroundColor(ThemeUtil.getColor('surface'))
+          .borderRadius(ThemeUtil.getBorderRadius('lg'))
+          .shadow({ radius: 6, color: 'rgba(0, 0, 0, 0.06)', offsetY: 2 })
           .padding(ThemeUtil.getSpacing('lg'))
           .margin({ top: ThemeUtil.getSpacing('sm') })
 
           Button(this.isLoading ? '保存中...' : '保存修改')
-            .width('90%')
+            .width('100%')
             .height(48)
             .fontSize(ThemeUtil.getFontSize('md'))
             .fontColor(ThemeUtil.getColor('onPrimary'))
@@ -332,27 +297,18 @@ struct UserEditPage {
             .onClick(() => this.handleSave())
             .margin({ top: ThemeUtil.getSpacing('lg') })
 
-          Button('删除账号')
-            .width('90%')
-            .height(44)
-            .fontSize(ThemeUtil.getFontSize('sm'))
-            .fontColor(ThemeUtil.getColor('error'))
-            .backgroundColor(Color.Transparent)
-            .borderWidth(1)
-            .borderColor(ThemeUtil.getColor('error'))
-            .borderRadius(ThemeUtil.getBorderRadius('md'))
-            .enabled(!this.isLoading)
-            .onClick(() => this.handleDelete())
-            .margin({ top: ThemeUtil.getSpacing('lg'), bottom: ThemeUtil.getSpacing('xl') })
         }
         .width('100%')
+        .padding({ left: ThemeUtil.getSpacing('md'), right: ThemeUtil.getSpacing('md'), top: ThemeUtil.getSpacing('sm') })
       }
       .layoutWeight(1)
       .scrollBar(BarState.Off)
+      .align(Alignment.Top)
     }
     .width('100%')
     .height('100%')
     .backgroundColor(ThemeUtil.getColor('background'))
+    .justifyContent(FlexAlign.Start)
   }
 
   @Builder

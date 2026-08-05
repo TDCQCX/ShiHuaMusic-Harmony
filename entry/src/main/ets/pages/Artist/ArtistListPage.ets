@@ -5,7 +5,6 @@ import { NavUtil } from '../../utils/NavUtil';
 import { ApiService } from '../../api/ApiService';
 import { ThemeUtil } from '../../utils/ThemeUtil';
 import { Artist, ArtistQuery } from '../../types/common';
-import { BottomPlayer } from '../../components/BottomPlayer';
 import { LoadingView } from '../../components/common/LoadingView';
 import { EmptyView } from '../../components/common/EmptyView';
 
@@ -208,7 +207,6 @@ struct ArtistListPage {
             this.loadArtists(false);
           }
         })
-        .padding({ bottom: 80 })
       }
 
       if (this.loadingMore) {
@@ -218,8 +216,6 @@ struct ArtistListPage {
           .color(ThemeUtil.getColor('primary'))
           .margin({ top: 8, bottom: 8 })
       }
-
-      BottomPlayer()
     }
     .width('100%')
     .height('100%')

@@ -88,10 +88,6 @@ export struct UserPage {
     NavUtil.push('pages/User/FeedbackPage');
   }
 
-  private goToServerSettings(): void {
-    NavUtil.push('pages/User/ServerSettingsPage');
-  }
-
   private goToTheme(): void {
     this.showThemeDialog = true;
   }
@@ -134,7 +130,8 @@ export struct UserPage {
   }
 
   build() {
-    Stack() {
+    // 显式 TopStart：避免 Stack 默认 Center 导致内容居中
+    Stack({ alignContent: Alignment.TopStart }) {
       Column() {
         Scroll() {
           Column() {
@@ -142,21 +139,20 @@ export struct UserPage {
             this.buildUserCard()
 
             // 功能列表
-            Column() {
-              this.buildMenuEntry($r('app.media.history'), '最近播放', () => this.goToRecent())
-              this.buildMenuEntry($r('app.media.playlist'), '我的歌单', () => this.goToPlaylists())
-              this.buildMenuEntry($r('app.media.like'), '我的喜欢', () => this.goToFavorites())
-            }
+          Column() {
+            this.buildMenuEntry($r('app.media.history'), '最近播放', () => this.goToRecent())
+            this.buildSymbolMenuEntry($r('sys.symbol.music_note_list'), '我的歌单', () => this.goToPlaylists())
+            this.buildSymbolMenuEntry($r('sys.symbol.heart'), '我的喜欢', () => this.goToFavorites())
+          }
             .width('100%')
             .backgroundColor(ThemeUtil.getColor('surface'))
             .borderRadius(ThemeUtil.getBorderRadius('lg'))
             .margin({ bottom: ThemeUtil.getSpacing('sm') })
 
-            Column() {
-              this.buildMenuEntry($r('app.media.loop'), '主题设置', () => this.goToTheme())
-              this.buildMenuEntry($r('app.media.comment'), '意见反馈', () => this.goToFeedback())
-              this.buildMenuEntry($r('app.media.lock'), '服务器设置', () => this.goToServerSettings())
-            }
+          Column() {
+            this.buildSymbolMenuEntry($r('sys.symbol.paintbrush'), '主题设置', () => this.goToTheme())
+            this.buildMenuEntry($r('app.media.comment'), '意见反馈', () => this.goToFeedback())
+          }
             .width('100%')
             .backgroundColor(ThemeUtil.getColor('surface'))
             .borderRadius(ThemeUtil.getBorderRadius('lg'))
@@ -177,13 +173,15 @@ export struct UserPage {
             }
           }
           .width('100%')
-          .padding({ left: ThemeUtil.getSpacing('md'), right: ThemeUtil.getSpacing('md'), top: 8, bottom: ThemeUtil.getSpacing('md') })
+        .padding({ left: ThemeUtil.getSpacing('md'), right: ThemeUtil.getSpacing('md'), top: ThemeUtil.getSpacing('md'), bottom: ThemeUtil.getSpacing('md') })
         }
         .layoutWeight(1)
         .scrollBar(BarState.Off)
+        .align(Alignment.Top)
       }
       .width('100%')
       .height('100%')
+      .justifyContent(FlexAlign.Start)
 
       // 主题设置：居中弹窗卡片（白色 / 黑色）
       if (this.showThemeDialog) {
@@ -298,13 +296,9 @@ export struct UserPage {
 
       if (this.isLoggedIn) {
         Column() {
-          Text('个人中心')
-            .fontSize(ThemeUtil.getFontSize('xs'))
-            .fontColor(ThemeUtil.getColor('primary'))
           Image($r('app.media.arrow_right'))
-            .width(16)
-            .height(16)
-            .margin({ top: 2 })
+            .width(20)
+            .height(20)
         }
         .onClick(() => this.goToEdit())
       } else {
@@ -332,6 +326,27 @@ export struct UserPage {
       Image(icon)
         .width(24)
         .height(24)
+        .margin({ right: ThemeUtil.getSpacing('md') })
+      Text(text)
+        .fontSize(ThemeUtil.getFontSize('md'))
+        .fontColor(ThemeUtil.getColor('textPrimary'))
+        .layoutWeight(1)
+      Image($r('app.media.arrow_right'))
+        .width(20)
+        .height(20)
+    }
+    .width('100%')
+    .height(56)
+    .padding({ left: ThemeUtil.getSpacing('md'), right: ThemeUtil.getSpacing('md') })
+    .onClick(() => onClick())
+  }
+
+  @Builder
+  private buildSymbolMenuEntry(symbol: Resource, text: string, onClick: () => void) {
+    Row() {
+      SymbolGlyph(symbol)
+        .fontSize(22)
+        .fontColor([ThemeUtil.getColor('textPrimary')])
         .margin({ right: ThemeUtil.getSpacing('md') })
       Text(text)
         .fontSize(ThemeUtil.getFontSize('md'))

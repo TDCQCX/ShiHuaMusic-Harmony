@@ -30,7 +30,6 @@ export class GlobalDataManager {
    * 应用启动时恢复本地会话
    */
   async initialize(): Promise<void> {
-    await HttpUtil.loadServerConfig();
     const token = await StorageUtil.getString('token', '');
     if (token) {
       HttpUtil.setToken(token);

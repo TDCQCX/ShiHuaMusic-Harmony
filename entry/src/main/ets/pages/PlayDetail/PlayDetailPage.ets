@@ -56,12 +56,16 @@ struct PlayDetailPage {
       this.audioManager.next();
     }
   };
+  private playModeListener: (mode: PlayMode) => void = (mode: PlayMode) => {
+    this.playMode = mode;
+  };
 
   aboutToAppear(): void {
     this.audioManager.onPlay(this.playListener);
     this.audioManager.onProgress(this.progressListener);
     this.audioManager.onTrackChange(this.trackListener);
     this.audioManager.onState(this.stateListener);
+    this.audioManager.onPlayMode(this.playModeListener);
     const track = this.audioManager.getCurrentTrack();
     if (track) {
       this.currentTrack = track;
@@ -85,6 +89,7 @@ struct PlayDetailPage {
     this.audioManager.offProgress(this.progressListener);
     this.audioManager.offTrackChange(this.trackListener);
     this.audioManager.offState(this.stateListener);
+    this.audioManager.offPlayMode(this.playModeListener);
     this.stopRotation();
     this.stopSpectrum();
   }
@@ -172,25 +177,7 @@ struct PlayDetailPage {
   }
 
   private togglePlayMode(): void {
-    let newMode: PlayMode = PlayMode.ORDER;
-    switch (this.playMode) {
-      case PlayMode.ORDER:
-        newMode = PlayMode.SHUFFLE;
-        break;
-      case PlayMode.SHUFFLE:
-        newMode = PlayMode.LOOP;
-        break;
-      case PlayMode.LOOP:
-        newMode = PlayMode.SINGLE;
-        break;
-      case PlayMode.SINGLE:
-        newMode = PlayMode.ORDER;
-        break;
-      default:
-        newMode = PlayMode.ORDER;
-        break;
-    }
-    this.playMode = newMode;
+    const newMode = AudioManager.nextMode(this.playMode);
     this.audioManager.setPlayMode(newMode);
   }
 
@@ -222,14 +209,12 @@ struct PlayDetailPage {
       if (this.likeStatus === 1) {
         const result = await ApiService.cancelCollectSong(songId);
         if (result.code === 0) {
-          track.likeStatus = 0;
-          this.likeStatus = 0;
+          this.audioManager.setLikeStatus(songId, 0);
         }
       } else {
         const result = await ApiService.collectSong(songId);
         if (result.code === 0) {
-          track.likeStatus = 1;
-          this.likeStatus = 1;
+          this.audioManager.setLikeStatus(songId, 1);
         }
       }
     } catch (error) {

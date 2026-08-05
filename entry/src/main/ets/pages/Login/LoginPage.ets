@@ -123,78 +123,85 @@ struct LoginPage {
       .padding({ left: ThemeUtil.getSpacing('md'), right: ThemeUtil.getSpacing('md') })
       .backgroundColor(ThemeUtil.getColor('surface'))
 
-      Column() {
-        Text('欢迎回来')
-          .fontSize(ThemeUtil.getFontSize('xl'))
-          .fontWeight(FontWeight.Bold)
-          .fontColor(ThemeUtil.getColor('textPrimary'))
-          .width('100%')
-          .margin({ top: ThemeUtil.getSpacing('lg'), bottom: 4 })
-        Text('登录以继续你的音乐之旅')
-          .fontSize(ThemeUtil.getFontSize('sm'))
-          .fontColor(ThemeUtil.getColor('textHint'))
-          .width('100%')
-          .margin({ bottom: ThemeUtil.getSpacing('lg') })
-
-        // 错误信息显示在账户输入框上方左侧
-        if (this.errorMessage.length > 0) {
-          Text(this.errorMessage)
-            .fontSize(ThemeUtil.getFontSize('xs'))
-            .fontColor(ThemeUtil.getColor('error'))
+      Scroll() {
+        Column() {
+          Text('欢迎回来')
+            .fontSize(ThemeUtil.getFontSize('xl'))
+            .fontWeight(FontWeight.Bold)
+            .fontColor(ThemeUtil.getColor('textPrimary'))
             .width('100%')
-            .margin({ bottom: ThemeUtil.getSpacing('sm') })
-        }
-
-        TextInput({ placeholder: '请输入邮箱', text: this.email })
-          .width('100%')
-          .height(48)
-          .type(InputType.Email)
-          .backgroundColor(ThemeUtil.getColor('surface'))
-          .borderRadius(ThemeUtil.getBorderRadius('md'))
-          .onChange((value: string) => {
-            this.email = value;
-            this.errorMessage = '';
-          })
-          .margin({ bottom: ThemeUtil.getSpacing('md') })
-
-        TextInput({ placeholder: '请输入密码', text: this.password })
-          .width('100%')
-          .height(48)
-          .type(InputType.Password)
-          .backgroundColor(ThemeUtil.getColor('surface'))
-          .borderRadius(ThemeUtil.getBorderRadius('md'))
-          .onChange((value: string) => {
-            this.password = value;
-            this.errorMessage = '';
-          })
-          .margin({ bottom: ThemeUtil.getSpacing('md') })
-
-        Button(this.isLoading ? '登录中...' : '登录')
-          .width('100%')
-          .height(48)
-          .fontSize(ThemeUtil.getFontSize('md'))
-          .fontColor(ThemeUtil.getColor('onPrimary'))
-          .backgroundColor(ThemeUtil.getColor('primary'))
-          .borderRadius(ThemeUtil.getBorderRadius('full'))
-          .enabled(!this.isLoading)
-          .onClick(() => this.handleLogin())
-
-        Row() {
-          Text('忘记密码？')
+            .textAlign(TextAlign.Center)
+            .margin({ top: 56, bottom: 4 })
+          Text('登录以继续你的音乐之旅')
             .fontSize(ThemeUtil.getFontSize('sm'))
-            .fontColor(ThemeUtil.getColor('primary'))
-            .onClick(() => this.goToReset())
-          Blank()
-          Text('没有账户？去注册')
-            .fontSize(ThemeUtil.getFontSize('sm'))
-            .fontColor(ThemeUtil.getColor('primary'))
-            .onClick(() => this.goToRegister())
+            .fontColor(ThemeUtil.getColor('textHint'))
+            .width('100%')
+            .textAlign(TextAlign.Center)
+            .margin({ bottom: ThemeUtil.getSpacing('lg') })
+
+          // 错误信息显示在账户输入框上方左侧
+          if (this.errorMessage.length > 0) {
+            Text(this.errorMessage)
+              .fontSize(ThemeUtil.getFontSize('xs'))
+              .fontColor(ThemeUtil.getColor('error'))
+              .width('100%')
+              .margin({ bottom: ThemeUtil.getSpacing('sm') })
+          }
+
+          TextInput({ placeholder: '请输入邮箱', text: this.email })
+            .width('100%')
+            .height(48)
+            .type(InputType.Email)
+            .backgroundColor(ThemeUtil.getColor('surface'))
+            .borderRadius(ThemeUtil.getBorderRadius('md'))
+            .onChange((value: string) => {
+              this.email = value;
+              this.errorMessage = '';
+            })
+            .margin({ bottom: ThemeUtil.getSpacing('md') })
+
+          TextInput({ placeholder: '请输入密码', text: this.password })
+            .width('100%')
+            .height(48)
+            .type(InputType.Password)
+            .backgroundColor(ThemeUtil.getColor('surface'))
+            .borderRadius(ThemeUtil.getBorderRadius('md'))
+            .onChange((value: string) => {
+              this.password = value;
+              this.errorMessage = '';
+            })
+            .margin({ bottom: ThemeUtil.getSpacing('md') })
+
+          Button(this.isLoading ? '登录中...' : '登录')
+            .width('100%')
+            .height(48)
+            .fontSize(ThemeUtil.getFontSize('md'))
+            .fontColor(ThemeUtil.getColor('onPrimary'))
+            .backgroundColor(ThemeUtil.getColor('primary'))
+            .borderRadius(ThemeUtil.getBorderRadius('full'))
+            .enabled(!this.isLoading)
+            .onClick(() => this.handleLogin())
+
+          Row() {
+            Text('忘记密码？')
+              .fontSize(ThemeUtil.getFontSize('sm'))
+              .fontColor(ThemeUtil.getColor('primary'))
+              .onClick(() => this.goToReset())
+            Blank()
+            Text('没有账户？去注册')
+              .fontSize(ThemeUtil.getFontSize('sm'))
+              .fontColor(ThemeUtil.getColor('primary'))
+              .onClick(() => this.goToRegister())
+          }
+          .width('100%')
+          .margin({ top: ThemeUtil.getSpacing('lg') })
         }
         .width('100%')
-        .margin({ top: ThemeUtil.getSpacing('lg') })
+        .padding({ left: ThemeUtil.getSpacing('lg'), right: ThemeUtil.getSpacing('lg') })
       }
-      .width('100%')
-      .padding({ left: ThemeUtil.getSpacing('lg'), right: ThemeUtil.getSpacing('lg') })
+      .layoutWeight(1)
+      .scrollBar(BarState.Off)
+      .align(Alignment.Top)
     }
     .width('100%')
     .height('100%')

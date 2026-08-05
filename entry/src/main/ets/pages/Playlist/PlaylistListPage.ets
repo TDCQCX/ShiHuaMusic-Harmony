@@ -6,7 +6,6 @@ import { ApiService } from '../../api/ApiService';
 import { GlobalDataManager } from '../../utils/GlobalDataManager';
 import { ThemeUtil } from '../../utils/ThemeUtil';
 import { FavoritePlaylist, PlaylistQuery, RecommendedPlaylist } from '../../types/common';
-import { BottomPlayer } from '../../components/BottomPlayer';
 import { LoadingView } from '../../components/common/LoadingView';
 import { EmptyView } from '../../components/common/EmptyView';
 import { TabManager } from '../../utils/TabManager';
@@ -247,7 +246,6 @@ struct PlaylistListPage {
             this.loadPlaylists(false);
           }
         })
-        .padding({ bottom: 90 })
       }
 
       if (this.loadingMore) {
@@ -257,8 +255,6 @@ struct PlaylistListPage {
           .color(ThemeUtil.getColor('primary'))
           .margin({ top: 8, bottom: 8 })
       }
-
-      BottomPlayer()
     }
     .width('100%')
     .height('100%')

@@ -9,7 +9,6 @@ import { ThemeUtil } from '../../utils/ThemeUtil';
 import { FormatUtil } from '../../utils/FormatUtil';
 import { AddCommentRequest, Comment, NavParams, PlaylistDetail, Song, TrackModel } from '../../types/common';
 import { SongRow } from '../../components/SongRow';
-import { BottomPlayer } from '../../components/BottomPlayer';
 import { LoadingView } from '../../components/common/LoadingView';
 import { EmptyView } from '../../components/common/EmptyView';
 
@@ -383,13 +382,10 @@ struct PlaylistDetailPage {
             }
           }
           .width('100%')
-          .padding({ bottom: 120 })
         }
         .layoutWeight(1)
         .scrollBar(BarState.Off)
       }
-
-      BottomPlayer()
     }
     .width('100%')
     .height('100%')

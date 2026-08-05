@@ -7,8 +7,8 @@ import { StorageUtil } from './StorageUtil';
 import { ApiResult, RequestConfig } from '../types/common';
 
 export class HttpUtil {
-  private static baseUrl: string = 'http://127.0.0.1:8080';
-  private static imageBaseUrl: string = 'http://127.0.0.1:9000';
+  private static baseUrl: string = 'http://192.168.31.89:8080';
+  private static imageBaseUrl: string = 'http://192.168.31.89:9000';
   private static token: string = '';
   private static readonly DEFAULT_TIMEOUT: number = 15000;
 

@@ -12,3 +12,5 @@
 /.appanalyzer
 /music-miniprogram
 music-miniprogram/
+music-client/
+.trae/

@@ -1,12 +1,12 @@
 {
   "src": [
+    "pages/Splash/SplashPage",
     "pages/MainTabs/MainTabs",
     "pages/Login/LoginPage",
     "pages/Register/RegisterPage",
     "pages/User/ResetPasswordPage",
     "pages/User/UserEditPage",
     "pages/User/FeedbackPage",
-    "pages/User/ServerSettingsPage",
     "pages/Search/SearchPage",
     "pages/MyFavorites/MyFavoritesPage",
     "pages/RecentPlay/RecentPlayPage",

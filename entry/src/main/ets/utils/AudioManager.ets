@@ -3,6 +3,7 @@
  * 基于 AVPlayer（@ohos.multimedia.media），对齐 music-client 播放行为
  */
 import { media } from '@kit.MediaKit';
+import { avSession } from '@kit.AVSessionKit';
 import { ApiService } from '../api/ApiService';
 import { MediaSessionManager } from './MediaSessionManager';
 import { StorageUtil } from './StorageUtil';
@@ -12,6 +13,7 @@ export type PlayStatusListener = (isPlaying: boolean) => void;
 export type ProgressListener = (currentTime: number, duration: number) => void;
 export type TrackChangeListener = (track: TrackModel, index: number) => void;
 export type StateListener = (state: PlayerState) => void;
+export type PlayModeListener = (mode: PlayMode) => void;
 
 export class AudioManager {
   private static instance: AudioManager | null = null;
@@ -27,11 +29,17 @@ export class AudioManager {
   private pendingUrl: string = '';
   private prepared: boolean = false;
   private mediaSession: MediaSessionManager = MediaSessionManager.getInstance();
+  private lastSessionUpdateTime: number = 0;
+  // 播放结束处理标记：防止 completed 事件与轮询兜底重复触发自动切歌
+  private playEndHandled: boolean = false;
+  // 已排定自动切歌（timeUpdate 每 100ms 触发，避免在等待窗口内重复排定）
+  private playEndScheduled: boolean = false;
 
   private playListeners: PlayStatusListener[] = [];
   private progressListeners: ProgressListener[] = [];
   private trackListeners: TrackChangeListener[] = [];
   private stateListeners: StateListener[] = [];
+  private playModeListeners: PlayModeListener[] = [];
 
   private constructor() {
   }
@@ -85,16 +93,31 @@ export class AudioManager {
       const player = await media.createAVPlayer();
       this.setupEvents(player);
       this.mediaSession.onPlayCommand = () => {
-        this.resume();
+        this.playFromSession();
       };
       this.mediaSession.onPauseCommand = () => {
-        this.pause();
+        this.pauseFromSession();
       };
       this.mediaSession.onNextCommand = () => {
         this.next();
       };
       this.mediaSession.onPreviousCommand = () => {
         this.previous();
+      };
+      this.mediaSession.onSeekCommand = (positionMs: number) => {
+        // 通知栏/播控中心拖动进度条：直接跳转并同步播放状态
+        this.seekTo(positionMs);
+      };
+      this.mediaSession.onLoopModeCommand = (mode: avSession.LoopMode, isTarget: boolean) => {
+        // setLoopMode：系统上报的是“当前”模式，由应用自行决定下一模式；
+        // setTargetLoopMode：系统上报的是用户选定的“目标”模式，直接应用即可。
+        const current = MediaSessionManager.mapToPlayMode(mode);
+        const next = isTarget ? current : AudioManager.nextMode(current);
+        console.info('通知栏循环模式命令：' + (isTarget ? '目标' : '切换') + '，' + current + ' -> ' + next);
+        this.setPlayMode(next);
+      };
+      this.mediaSession.onToggleFavoriteCommand = () => {
+        this.toggleFavoriteFromSession();
       };
       return player;
     } catch (error) {
@@ -124,7 +147,7 @@ export class AudioManager {
         this.playerState = PlayerState.COMPLETED;
         this.notifyPlay(false);
         this.mediaSession.updateState(PlayerState.COMPLETED, this.duration);
-        this.handlePlayEnd();
+        this.schedulePlayEnd();
       } else if (state === 'error') {
         this.playerState = PlayerState.ERROR;
         this.notifyPlay(false);
@@ -134,6 +157,16 @@ export class AudioManager {
     player.on('timeUpdate', (time: number) => {
       this.currentTime = time;
       this.notifyProgress(this.currentTime, this.duration);
+      // 节流：每秒向通知栏同步一次播放进度
+      const now = Date.now();
+      if (now - this.lastSessionUpdateTime > 1000) {
+        this.lastSessionUpdateTime = now;
+        this.mediaSession.updateState(PlayerState.PLAYING, this.currentTime);
+      }
+      // 兜底：部分设备/网络流不派发 completed 事件（日志可见
+      // “OnEndOfStream is called / can not find EndOfStream callback”），
+      // 依赖 timeUpdate（约每 100ms 上报一次）与 player.state 检测播完并自动切歌
+      this.checkPlayEnd();
     });
     player.on('durationUpdate', (duration: number) => {
       this.duration = duration;
@@ -157,6 +190,28 @@ export class AudioManager {
       this.currentIndex = -1;
     }
     this.persistTrackList();
+  }
+
+  /**
+   * 统一更新歌曲收藏状态：同步播放列表、所有 UI 与通知栏
+   */
+  setLikeStatus(songId: number, status: number): void {
+    let currentChanged: boolean = false;
+    this.trackList.forEach((track: TrackModel) => {
+      if (Number(track.id) === songId) {
+        track.likeStatus = status;
+        if (this.currentIndex >= 0 && this.trackList[this.currentIndex] === track) {
+          currentChanged = true;
+        }
+      }
+    });
+    if (currentChanged) {
+      const track = this.getCurrentTrack();
+      if (track) {
+        this.notifyTrack(track, this.currentIndex);
+        this.mediaSession.updateSession(track, this.playerState, this.playMode);
+      }
+    }
   }
 
   getTrackList(): TrackModel[] {
@@ -232,6 +287,8 @@ export class AudioManager {
       // 主动同步播放状态，确保 UI 立即切换（不依赖事件时序）
       this.playerState = PlayerState.PLAYING;
       this.notifyPlay(true);
+      this.playEndHandled = false;
+      this.playEndScheduled = false;
       this.pendingUrl = track.url;
       this.notifyTrack(track, this.currentIndex);
       this.mediaSession.updateSession(track, PlayerState.PLAYING, this.playMode);
@@ -395,6 +452,10 @@ export class AudioManager {
         this.avPlayer.seek(progress);
         this.currentTime = progress;
         this.notifyProgress(this.currentTime, this.duration);
+        // 手动跳转后重新允许播放结束检测
+        this.playEndHandled = false;
+        // 同步到通知栏/播控中心，保证拖动后进度不回弹
+        this.mediaSession.updateState(this.playerState, this.currentTime);
       } catch (error) {
         console.error('设置播放进度失败:', JSON.stringify(error));
       }
@@ -426,13 +487,30 @@ export class AudioManager {
   setPlayMode(mode: PlayMode): void {
     this.playMode = mode;
     StorageUtil.putNumber('audio_play_mode', mode);
-    if (this.playerState === PlayerState.PLAYING || this.playerState === PlayerState.PAUSED) {
-      this.mediaSession.updateState(this.playerState, this.currentTime);
-    }
+    // 循环模式必须实时同步到通知栏（否则通知栏图标不更新、点击无效果）
+    this.mediaSession.updateLoopMode(mode);
+    this.notifyPlayMode(mode);
   }
 
   getPlayMode(): PlayMode {
     return this.playMode;
+  }
+
+  /**
+   * 计算循环模式的下一个模式（与播放页/通知栏共用同一顺序）
+   */
+  static nextMode(mode: PlayMode): PlayMode {
+    switch (mode) {
+      case PlayMode.ORDER:
+        return PlayMode.SHUFFLE;
+      case PlayMode.SHUFFLE:
+        return PlayMode.LOOP;
+      case PlayMode.LOOP:
+        return PlayMode.SINGLE;
+      case PlayMode.SINGLE:
+      default:
+        return PlayMode.ORDER;
+    }
   }
 
   // ========== 状态读取 ==========
@@ -502,6 +580,14 @@ export class AudioManager {
     this.removeListener(this.stateListeners, listener);
   }
 
+  onPlayMode(listener: PlayModeListener): void {
+    this.playModeListeners.push(listener);
+  }
+
+  offPlayMode(listener: PlayModeListener): void {
+    this.removeListener(this.playModeListeners, listener);
+  }
+
   private removeListener<T>(listeners: T[], listener: T): void {
     const index = listeners.indexOf(listener);
     if (index > -1) {
@@ -529,12 +615,132 @@ export class AudioManager {
     }
   }
 
+  /**
+   * 通知栏播放命令：直接驱动播放器并同步状态（不依赖内部状态机判断）
+   */
+  private async playFromSession(): Promise<void> {
+    try {
+      if (this.avPlayer !== null && (this.avPlayer.state === 'paused' || this.avPlayer.state === 'prepared' ||
+        this.avPlayer.state === 'completed')) {
+        await this.avPlayer.play();
+      } else {
+        await this.play();
+      }
+      this.playerState = PlayerState.PLAYING;
+      this.notifyPlay(true);
+      this.mediaSession.updateState(PlayerState.PLAYING, this.currentTime);
+    } catch (error) {
+      console.error('通知栏播放失败:', JSON.stringify(error));
+    }
+  }
+
+  /**
+   * 通知栏暂停命令：直接驱动播放器并同步状态
+   */
+  private async pauseFromSession(): Promise<void> {
+    try {
+      if (this.avPlayer !== null && this.avPlayer.state === 'playing') {
+        await this.avPlayer.pause();
+      }
+      this.playerState = PlayerState.PAUSED;
+      this.notifyPlay(false);
+      this.mediaSession.updateState(PlayerState.PAUSED, this.currentTime);
+    } catch (error) {
+      console.error('通知栏暂停失败:', JSON.stringify(error));
+    }
+  }
+
+  /**
+   * 通知栏收藏命令：切换当前歌曲喜欢状态
+   */
+  private async toggleFavoriteFromSession(): Promise<void> {
+    const track = this.getCurrentTrack();
+    if (!track) {
+      return;
+    }
+    const songId = Number(track.id);
+    try {
+      if (track.likeStatus === 1) {
+        const result = await ApiService.cancelCollectSong(songId);
+        if (result.code === 0) {
+          this.setLikeStatus(songId, 0);
+        }
+      } else {
+        const result = await ApiService.collectSong(songId);
+        if (result.code === 0) {
+          this.setLikeStatus(songId, 1);
+        }
+      }
+    } catch (error) {
+      console.error('通知栏收藏失败:', JSON.stringify(error));
+    }
+  }
+
   private handlePlayEnd(): void {
+    if (this.playEndHandled) {
+      return;
+    }
+    this.playEndHandled = true;
+    console.info('handlePlayEnd 执行，当前播放模式: ' + this.playMode.toString());
+    // 释放已完成的播放器，确保下一首以全新状态加载（参照 music-client ended → nextTrack）
+    if (this.avPlayer !== null) {
+      try {
+        this.avPlayer.release();
+      } catch (error) {
+        console.warn('释放已完成播放器失败:', JSON.stringify(error));
+      }
+      this.avPlayer = null;
+      this.prepared = false;
+      this.pendingUrl = '';
+    }
     if (this.playMode === PlayMode.SINGLE) {
       this.seekTo(0);
       this.play();
     } else {
       this.next();
+    }
+  }
+
+  /**
+   * 排定自动切歌：延迟 80ms 执行，避免与 stateChange(completed) 事件派发竞争；
+   * completed 事件与 timeUpdate 兜底检测共用此入口，保证只切一次
+   */
+  private schedulePlayEnd(): void {
+    if (this.playEndHandled || this.playEndScheduled) {
+      return;
+    }
+    this.playEndScheduled = true;
+    console.info('检测到播放结束，自动切歌');
+    setTimeout(() => {
+      this.playEndScheduled = false;
+      this.handlePlayEnd();
+    }, 80);
+  }
+
+  /**
+   * 播放结束检测（timeUpdate 每 100ms 触发一次，播完自动切歌的可靠兜底）：
+   * 1. player.state 已进入 completed（事件未派发时也能读到原生状态）；
+   * 2. 播放进度已到达时长末尾（timeUpdate 最后一次上报通常距结尾不足 200ms）。
+   */
+  private checkPlayEnd(): void {
+    if (this.playEndHandled || this.playEndScheduled || this.avPlayer === null) {
+      return;
+    }
+    if (this.playerState !== PlayerState.PLAYING && this.playerState !== PlayerState.COMPLETED) {
+      return;
+    }
+    let nativeState: media.AVPlayerState = 'idle';
+    try {
+      nativeState = this.avPlayer.state;
+    } catch (error) {
+      return;
+    }
+    // timeUpdate/duration 单位均为毫秒，距结尾 200ms 内视为播放结束
+    const nearEnd: boolean = this.duration > 0 && this.currentTime >= this.duration - 200;
+    if (nativeState === 'completed' || nearEnd) {
+      console.info('检测到播放结束（state=' + nativeState + ', time=' + this.currentTime +
+        '/' + this.duration + '）');
+      this.schedulePlayEnd();
     }
   }
 
@@ -564,6 +770,12 @@ export class AudioManager {
   private notifyState(state: PlayerState): void {
     this.stateListeners.forEach((listener: StateListener) => {
       listener(state);
+    });
+  }
+
+  private notifyPlayMode(mode: PlayMode): void {
+    this.playModeListeners.forEach((listener: PlayModeListener) => {
+      listener(mode);
     });
   }
 }

@@ -29,6 +29,9 @@ export struct LibraryPage {
   @State themeRefresh: number = 0;
   @State genderFilter: string = '-1';
   @State areaFilter: string = '-1';
+  @State hotCover: string = '';
+  @State newCover: string = '';
+  @State filterCollapsed: boolean = false;
 
   private currentPage: number = 1;
   private readonly pageSize: number = 20;
@@ -54,6 +57,7 @@ export struct LibraryPage {
 
   aboutToAppear(): void {
     this.loadSongs(true);
+    this.loadRankCovers();
     ThemeUtil.addThemeChangeListener(this.themeListener);
   }
 
@@ -231,6 +235,7 @@ export struct LibraryPage {
       ApiService.cancelCollectSong(song.songId).then((result) => {
         if (result.code === 0) {
           song.likeStatus = 0;
+          this.audioManager.setLikeStatus(song.songId, 0);
           this.refreshSongs();
         }
       });
@@ -238,6 +243,7 @@ export struct LibraryPage {
       ApiService.collectSong(song.songId).then((result) => {
         if (result.code === 0) {
           song.likeStatus = 1;
+          this.audioManager.setLikeStatus(song.songId, 1);
           this.refreshSongs();
         }
       });
@@ -252,6 +258,41 @@ export struct LibraryPage {
 
   private goToRank(rankType: string): void {
     NavUtil.push('pages/Rank/RankPage', { rankType: rankType });
+  }
+
+  /**
+   * 加载榜单封面：各榜单第一首音乐封面
+   */
+  private async loadRankCovers(): Promise<void> {
+    try {
+      const hot = await ApiService.getRecommendedSongs();
+      if (hot.code === 0 && hot.data && hot.data.length > 0) {
+        this.hotCover = hot.data[0].coverUrl;
+      }
+      const fresh: SongQuery = {
+        pageNum: 1,
+        pageSize: 1,
+        songName: undefined,
+        artistName: undefined,
+        album: undefined
+      };
+      const newResult = await ApiService.getAllSongs(fresh);
+      if (newResult.code === 0 && newResult.data && newResult.data.items && newResult.data.items.length > 0) {
+        this.newCover = newResult.data.items[0].coverUrl;
+      }
+    } catch (error) {
+      console.error('加载榜单封面失败:', error);
+    }
+  }
+
+  private getGenderLabel(): string {
+    const opt = this.genderOptions.find((o: FilterOption) => o.value === this.genderFilter);
+    return opt ? opt.label : '全部';
+  }
+
+  private getAreaLabel(): string {
+    const opt = this.areaOptions.find((o: FilterOption) => o.value === this.areaFilter);
+    return opt ? opt.label : '全部';
   }
 
   private getAvatar(): string | Resource {
@@ -317,23 +358,58 @@ export struct LibraryPage {
       .padding({ left: ThemeUtil.getSpacing('md'), right: ThemeUtil.getSpacing('md') })
       .backgroundColor(ThemeUtil.getColor('surface'))
 
-      // 榜单入口
-      Row() {
-        this.buildRankCard('热门榜单', '今日热播', 'hot')
-        this.buildRankCard('新歌榜单', '最新发布', 'new')
+      // 榜单 + 分类筛选：同一容器内双层渐变（上滑折叠为一行，下滑恢复）
+      Stack() {
+        // 折叠行：收起时放大淡入
+        Row() {
+          Text('歌手：' + this.getGenderLabel())
+            .fontSize(ThemeUtil.getFontSize('sm'))
+            .fontColor(ThemeUtil.getColor('primary'))
+          Text('地区：' + this.getAreaLabel())
+            .fontSize(ThemeUtil.getFontSize('sm'))
+            .fontColor(ThemeUtil.getColor('primary'))
+            .margin({ left: ThemeUtil.getSpacing('lg') })
+          Blank()
+          SymbolGlyph($r('sys.symbol.chevron_left'))
+            .fontSize(16)
+            .fontColor([ThemeUtil.getColor('textHint')])
+            .rotate({ angle: 90 })
+        }
+        .width('100%')
+        .height(44)
+        .padding({ left: ThemeUtil.getSpacing('md'), right: ThemeUtil.getSpacing('md') })
+        .backgroundColor(ThemeUtil.getColor('surface'))
+        .opacity(this.filterCollapsed ? 1 : 0)
+        .scale({ x: this.filterCollapsed ? 1 : 0.6, y: this.filterCollapsed ? 1 : 0.6 })
+        .animation({ duration: 320, curve: Curve.EaseInOut })
+
+        // 展开区：收起时缩小淡出
+        Column() {
+          Row() {
+            this.buildRankCard('热门榜单', 'hot')
+            this.buildRankCard('新歌榜单', 'new')
+          }
+          .width('100%')
+          .padding({ left: ThemeUtil.getSpacing('md'), right: ThemeUtil.getSpacing('md'), top: 8, bottom: 4 })
+
+          this.buildFilterRow('歌手类型', this.genderOptions, 'gender', (value: string) => {
+            this.genderFilter = value;
+            this.onFilterChange();
+          })
+          this.buildFilterRow('地区类型', this.areaOptions, 'area', (value: string) => {
+            this.areaFilter = value;
+            this.onFilterChange();
+          })
+        }
+        .width('100%')
+        .opacity(this.filterCollapsed ? 0 : 1)
+        .scale({ x: this.filterCollapsed ? 0.6 : 1, y: this.filterCollapsed ? 0.6 : 1 })
+        .animation({ duration: 320, curve: Curve.EaseInOut })
       }
       .width('100%')
-      .padding({ left: ThemeUtil.getSpacing('md'), right: ThemeUtil.getSpacing('md'), top: 8, bottom: 4 })
-
-      // 分类筛选（标签左对齐）
-      this.buildFilterRow('歌手类型', this.genderOptions, 'gender', (value: string) => {
-        this.genderFilter = value;
-        this.onFilterChange();
-      })
-      this.buildFilterRow('地区类型', this.areaOptions, 'area', (value: string) => {
-        this.areaFilter = value;
-        this.onFilterChange();
-      })
+      .height(this.filterCollapsed ? 44 : 'auto')
+      .clip(true)
+      .animation({ duration: 320, curve: Curve.EaseInOut })
 
       if (this.isLoading) {
         LoadingView()
@@ -359,6 +435,14 @@ export struct LibraryPage {
         .scrollBar(BarState.Off)
         .divider({ strokeWidth: 1, color: ThemeUtil.getColor('divider') })
         .onReachEnd(() => this.onReachEnd())
+        .onScrollIndex((first: number) => {
+          // 上滑（滚动离开首项）折叠榜单与筛选为一行，回到顶部恢复
+          if (first > 0) {
+            this.filterCollapsed = true;
+          } else {
+            this.filterCollapsed = false;
+          }
+        })
         .padding({ bottom: 8 })
 
         if (this.loadingMore) {
@@ -390,29 +474,38 @@ export struct LibraryPage {
   }
 
   @Builder
-  private buildRankCard(title: string, desc: string, rankType: string) {
-    Column() {
-      Text(title)
-        .fontSize(ThemeUtil.getFontSize('md'))
-        .fontWeight(FontWeight.Bold)
-        .fontColor(ThemeUtil.getColor('textPrimary'))
-        .width('100%')
-        .textAlign(TextAlign.Start)
-      Text(desc)
-        .fontSize(ThemeUtil.getFontSize('xs'))
-        .fontColor(ThemeUtil.getColor('textHint'))
-        .width('100%')
-        .textAlign(TextAlign.Start)
-        .margin({ top: 2 })
+  private buildRankCard(title: string, rankType: string) {
+    Row() {
+      Image(this.getRankCover(rankType) ? this.getRankCover(rankType) : $r('app.media.default_cover'))
+        .width(76)
+        .height(76)
+        .borderRadius(ThemeUtil.getBorderRadius('md'))
+        .objectFit(ImageFit.Cover)
+        .backgroundColor(ThemeUtil.getColor('background'))
+      Column() {
+        Text(title)
+          .fontSize(ThemeUtil.getFontSize('lg'))
+          .fontWeight(FontWeight.Bold)
+          .fontColor(ThemeUtil.getColor('textPrimary'))
+          .width('100%')
+          .textAlign(TextAlign.Start)
+      }
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Start)
+      .margin({ left: ThemeUtil.getSpacing('sm') })
     }
     .layoutWeight(1)
-    .height(64)
+    .height(104)
     .padding(ThemeUtil.getSpacing('md'))
     .backgroundColor(ThemeUtil.getColor('surface'))
     .borderRadius(ThemeUtil.getBorderRadius('lg'))
     .shadow({ radius: 6, color: 'rgba(0, 0, 0, 0.06)', offsetY: 2 })
     .margin({ right: ThemeUtil.getSpacing('md') })
     .onClick(() => this.goToRank(rankType))
+  }
+
+  private getRankCover(rankType: string): string {
+    return rankType === 'hot' ? this.hotCover : this.newCover;
   }
 
   @Builder
@@ -442,6 +535,7 @@ export struct LibraryPage {
               .onClick(() => onSelect(option.value))
           }, (option: FilterOption) => option.value)
         }
+        .justifyContent(FlexAlign.Start)
         .padding({ left: ThemeUtil.getSpacing('md'), right: ThemeUtil.getSpacing('md') })
       }
       .scrollBar(BarState.Off)

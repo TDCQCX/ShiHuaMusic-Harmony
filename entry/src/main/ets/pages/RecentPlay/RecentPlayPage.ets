@@ -6,7 +6,6 @@ import { AudioManager } from '../../utils/AudioManager';
 import { GlobalDataManager } from '../../utils/GlobalDataManager';
 import { ThemeUtil } from '../../utils/ThemeUtil';
 import { TrackModel } from '../../types/common';
-import { BottomPlayer } from '../../components/BottomPlayer';
 import { EmptyView } from '../../components/common/EmptyView';
 
 @Entry
@@ -137,10 +136,7 @@ struct RecentPlayPage {
         .layoutWeight(1)
         .scrollBar(BarState.Off)
         .divider({ strokeWidth: 1, color: ThemeUtil.getColor('divider') })
-        .padding({ bottom: 80 })
       }
-
-      BottomPlayer()
     }
     .width('100%')
     .height('100%')

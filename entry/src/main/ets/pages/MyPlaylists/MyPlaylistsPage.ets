@@ -6,7 +6,6 @@ import { ApiService } from '../../api/ApiService';
 import { GlobalDataManager } from '../../utils/GlobalDataManager';
 import { ThemeUtil } from '../../utils/ThemeUtil';
 import { PlaylistQuery, RecommendedPlaylist, FavoritePlaylist } from '../../types/common';
-import { BottomPlayer } from '../../components/BottomPlayer';
 import { LoadingView } from '../../components/common/LoadingView';
 import { EmptyView } from '../../components/common/EmptyView';
 
@@ -142,8 +141,6 @@ struct MyPlaylistsPage {
           }
         }
       }
-
-      BottomPlayer()
     }
     .width('100%')
     .height('100%')
@@ -185,6 +182,5 @@ struct MyPlaylistsPage {
     .layoutWeight(1)
     .scrollBar(BarState.Off)
     .divider({ strokeWidth: 1, color: ThemeUtil.getColor('divider') })
-    .padding({ bottom: 80 })
   }
 }

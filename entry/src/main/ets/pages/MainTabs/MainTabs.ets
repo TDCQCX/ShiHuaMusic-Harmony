@@ -65,17 +65,32 @@ struct MainTabs {
         controller: this.tabsController
       }) {
         TabContent() {
-          IndexPage()
+          Column() {
+            IndexPage()
+          }
+          .width('100%')
+          .height('100%')
+          .justifyContent(FlexAlign.Start)
         }
         .tabBar(this.tabBuilder(0, '发现', $r('app.media.find'), $r('app.media.find_active')))
 
         TabContent() {
-          LibraryPage()
+          Column() {
+            LibraryPage()
+          }
+          .width('100%')
+          .height('100%')
+          .justifyContent(FlexAlign.Start)
         }
         .tabBar(this.tabBuilder(1, '全部音乐', $r('app.media.music'), $r('app.media.music_active')))
 
         TabContent() {
-          UserPage()
+          Column() {
+            UserPage()
+          }
+          .width('100%')
+          .height('100%')
+          .justifyContent(FlexAlign.Start)
         }
         .tabBar(this.tabBuilder(2, '我的', $r('app.media.mine'), $r('app.media.mine_active')))
       }

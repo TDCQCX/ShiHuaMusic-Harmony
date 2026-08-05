@@ -9,7 +9,6 @@ import { StorageUtil } from '../../utils/StorageUtil';
 import { ThemeUtil } from '../../utils/ThemeUtil';
 import { Artist, ArtistQuery, PlaylistQuery, RecommendedPlaylist, Song, SongQuery, TrackModel } from '../../types/common';
 import { SongRow } from '../../components/SongRow';
-import { BottomPlayer } from '../../components/BottomPlayer';
 import { LoadingView } from '../../components/common/LoadingView';
 
 interface HotKeyword {
@@ -303,8 +302,6 @@ struct SearchPage {
       } else {
         this.buildRecommend()
       }
-
-      BottomPlayer()
     }
     .width('100%')
     .height('100%')

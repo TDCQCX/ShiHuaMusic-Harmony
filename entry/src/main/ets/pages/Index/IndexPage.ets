@@ -154,7 +154,7 @@ export struct IndexPage {
         .fontWeight(FontWeight.Bold)
         .fontColor(ThemeUtil.getColor('textPrimary'))
       Blank()
-      Image($r('app.media.user'))
+      Image($r('app.media.logo'))
         .width(24)
         .height(24)
         .onClick(() => this.switchToUser())
@@ -325,12 +325,14 @@ export struct IndexPage {
       ApiService.cancelCollectSong(song.songId).then((result) => {
         if (result.code === 0) {
           song.likeStatus = 0;
+          this.audioManager.setLikeStatus(song.songId, 0);
         }
       });
     } else {
       ApiService.collectSong(song.songId).then((result) => {
         if (result.code === 0) {
           song.likeStatus = 1;
+          this.audioManager.setLikeStatus(song.songId, 1);
         }
       });
     }

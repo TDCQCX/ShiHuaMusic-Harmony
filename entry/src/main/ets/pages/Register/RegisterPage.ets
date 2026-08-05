@@ -165,11 +165,13 @@ struct RegisterPage {
             .fontWeight(FontWeight.Bold)
             .fontColor(ThemeUtil.getColor('textPrimary'))
             .width('100%')
-            .margin({ top: ThemeUtil.getSpacing('lg'), bottom: 4 })
+            .textAlign(TextAlign.Center)
+            .margin({ top: 56, bottom: 4 })
           Text('发现更多好音乐')
             .fontSize(ThemeUtil.getFontSize('sm'))
             .fontColor(ThemeUtil.getColor('textHint'))
             .width('100%')
+            .textAlign(TextAlign.Center)
             .margin({ bottom: ThemeUtil.getSpacing('lg') })
 
           this.buildInput('用户名', this.username, '请输入用户名（4-16位）', InputType.Normal, (value: string) => {
@@ -274,6 +276,7 @@ struct RegisterPage {
       }
       .layoutWeight(1)
       .scrollBar(BarState.Off)
+      .align(Alignment.Top)
     }
     .width('100%')
     .height('100%')

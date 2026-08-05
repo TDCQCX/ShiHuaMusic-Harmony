@@ -8,7 +8,6 @@ import { GlobalDataManager } from '../../utils/GlobalDataManager';
 import { ThemeUtil } from '../../utils/ThemeUtil';
 import { Song, SongQuery, TrackModel } from '../../types/common';
 import { SongRow } from '../../components/SongRow';
-import { BottomPlayer } from '../../components/BottomPlayer';
 import { LoadingView } from '../../components/common/LoadingView';
 import { EmptyView } from '../../components/common/EmptyView';
 
@@ -101,6 +100,7 @@ struct MyFavoritesPage {
   private toggleLike(song: Song): void {
     ApiService.cancelCollectSong(song.songId).then((result) => {
       if (result.code === 0) {
+        this.audioManager.setLikeStatus(song.songId, 0);
         const updated = this.songs.filter((item: Song) => item.songId !== song.songId);
         this.songs = updated;
       }
@@ -165,10 +165,7 @@ struct MyFavoritesPage {
             this.loadFavorites(false);
           }
         })
-        .padding({ bottom: 80 })
       }
-
-      BottomPlayer()
     }
     .width('100%')
     .height('100%')
